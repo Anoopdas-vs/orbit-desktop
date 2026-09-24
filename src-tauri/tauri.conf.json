@@ -41,7 +41,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/AnoopDasVS/orbit-desktop/releases/latest/download/latest.json"
+        "https://github.com/Anoopdas-vs/orbit-desktop/releases/latest/download/latest.json"
       ],
       "dialog": true,
       "pubkey": ""
