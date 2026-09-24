@@ -48,6 +48,18 @@ const BLOCKED_PATTERNS = [
   /\b(?:export|env|set)\b.*(?:KEY|SECRET|TOKEN|PASSWORD)/i,
 ];
 
+/** Sanitize strings for safe AppleScript interpolation */
+function sanitizeForAppleScript(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/\\/g, '\\\\')  // Escape backslashes first
+    .replace(/"/g, '\\"')    // Escape double quotes
+    .replace(/\r/g, '')       // Remove carriage returns
+    .replace(/\n/g, ' ')      // Replace newlines with spaces
+    .replace(/\t/g, ' ')      // Replace tabs with spaces
+    .slice(0, 500);            // Limit length to prevent abuse
+}
+
 function resolveInstalledEditor(requestedApp: string): string {
   if (requestedApp === 'Visual Studio Code' || requestedApp === 'VS Code') {
     if (fs.existsSync('/Applications/Visual Studio Code.app')) {
@@ -204,32 +216,45 @@ export function macOSEndpointPlugin(): Plugin {
           const cmd = (body.command || '').trim();
           const cwd = body.cwd || process.cwd();
 
+          // Block dangerous patterns first
           for (const pattern of BLOCKED_PATTERNS) {
             if (pattern.test(cmd)) {
               return jsonResponse(403, {
                 success: false,
-                error: `Command blocked by security policy: matches forbidden pattern ${pattern.toString()}`,
+                error: `Command blocked by security policy: matches forbidden pattern.`,
               });
             }
           }
 
-          const isAllowlisted = ALLOWED_COMMAND_PREFIXES.some(
-            (p) => cmd === p || cmd.startsWith(p)
+          // Strict exact-match allowlist (no prefix matching to prevent injection)
+          const isExactAllowlisted = ALLOWED_COMMAND_PREFIXES.some(
+            (allowed) => cmd === allowed
           );
-          if (!isAllowlisted) {
+          // Also allow commands that are exactly an allowed prefix + safe arguments (no shell metacharacters)
+          const SHELL_METACHARACTERS = /[;&|`$(){}\[\]!#~<>\\\n\r]/;
+          const isPrefixSafe = !isExactAllowlisted && ALLOWED_COMMAND_PREFIXES.some(
+            (allowed) => cmd.startsWith(allowed + ' ') && !SHELL_METACHARACTERS.test(cmd)
+          );
+
+          if (!isExactAllowlisted && !isPrefixSafe) {
             return jsonResponse(403, {
               success: false,
-              error: `Command "${cmd}" is not in the allowlisted command catalog.`,
+              error: `Command "${cmd}" is not in the allowlisted command catalog or contains unsafe characters.`,
             });
           }
 
-          exec(cmd, { cwd, timeout: 30000 }, (error, stdout, stderr) => {
+          // Split command into binary and args for execFile (no shell interpretation)
+          const parts = cmd.split(/\s+/);
+          const binary = parts[0];
+          const args = parts.slice(1);
+
+          execFile(binary, args, { cwd, timeout: 30000 }, (error, stdout, stderr) => {
             return jsonResponse(200, {
               success: !error,
               command: cmd,
               stdout: stdout || '',
               stderr: stderr || '',
-              exitCode: error ? error.code || 1 : 0,
+              exitCode: error ? (error as any).code || 1 : 0,
               error: error ? error.message : undefined,
             });
           });
@@ -305,11 +330,20 @@ export function macOSEndpointPlugin(): Plugin {
           const { action, appName, target, text, key, x, y, shortcut } = body;
 
           let script = '';
-          const cleanApp = (appName || 'System Events').replace(/"/g, '\\"');
-          const cleanText = (text || '').replace(/"/g, '\\"').replace(/\\/g, '\\\\');
+          // Validate app name against allowlist (prevent injection via appName)
+          const rawApp = appName || 'System Events';
+          const isAppAllowed = ALLOWED_APPS.some(a => a.toLowerCase() === rawApp.toLowerCase()) || rawApp === 'System Events';
+          if (!isAppAllowed) {
+            return jsonResponse(403, {
+              success: false,
+              error: `Application "${rawApp}" is not in the approved allowlist for GUI automation.`,
+            });
+          }
+          const cleanApp = sanitizeForAppleScript(rawApp);
+          const cleanText = sanitizeForAppleScript(text || '');
 
           if (action === 'click_button') {
-            const cleanTarget = (target || 'Submit').replace(/"/g, '\\"');
+            const cleanTarget = sanitizeForAppleScript(target || 'Submit');
             script = `
               tell application "System Events"
                 tell process "${cleanApp}"

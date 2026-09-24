@@ -4,10 +4,131 @@ import { ActionPlan } from '../types/action-plan';
 import { RegisteredProject } from '../types/projects';
 import { TradeJournalEntry, PreparedSpotOrder } from '../types/trading';
 
+/**
+ * Detect if running inside Tauri desktop environment
+ */
+function isTauriEnvironment(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+/**
+ * Filesystem persistence layer — abstracts Tauri fs vs browser localStorage
+ */
+class PersistenceLayer {
+  private dbPath: string | null = null;
+  private isTauri = false;
+
+  async initialize(): Promise<void> {
+    this.isTauri = isTauriEnvironment();
+
+    if (this.isTauri) {
+      try {
+        // Dynamic import to avoid bundling issues in browser mode
+        const { appDataDir, join } = await import('@tauri-apps/api/path');
+        const dataDir = await appDataDir();
+        this.dbPath = await join(dataDir, 'orbit.db');
+        console.log('[Orbit DB] Tauri mode — persisting to:', this.dbPath);
+      } catch (err) {
+        console.warn('[Orbit DB] Tauri path API failed, falling back to localStorage:', err);
+        this.isTauri = false;
+      }
+    }
+
+    if (!this.isTauri) {
+      console.warn(
+        '[Orbit DB] Browser mode — database stored in localStorage (ephemeral). ' +
+        'Data will be lost if browser cache is cleared. ' +
+        'Build and run as Tauri desktop app for persistent storage.'
+      );
+    }
+  }
+
+  async loadDatabase(): Promise<Uint8Array | undefined> {
+    if (this.isTauri && this.dbPath) {
+      try {
+        const { readFile } = await import('@tauri-apps/plugin-fs');
+        const data = await readFile(this.dbPath);
+        return new Uint8Array(data);
+      } catch {
+        // File doesn't exist yet — fresh database
+        return undefined;
+      }
+    }
+
+    // Browser fallback: localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem('orbit_sqlite_data');
+      if (raw) {
+        try {
+          const binary = atob(raw);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          return bytes;
+        } catch (err) {
+          console.error('[Orbit DB] Failed to decode localStorage data:', err);
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  async saveDatabase(data: Uint8Array): Promise<void> {
+    if (this.isTauri && this.dbPath) {
+      try {
+        const { writeFile, mkdir } = await import('@tauri-apps/plugin-fs');
+        const { appDataDir } = await import('@tauri-apps/api/path');
+        // Ensure app data directory exists
+        try {
+          await mkdir(await appDataDir(), { recursive: true });
+        } catch {
+          // Directory may already exist
+        }
+        await writeFile(this.dbPath, data);
+        return;
+      } catch (err) {
+        console.error('[Orbit DB] Tauri file write failed:', err);
+      }
+    }
+
+    // Browser fallback: localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        let binary = '';
+        const len = data.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(data[i]);
+        }
+        window.localStorage.setItem('orbit_sqlite_data', btoa(binary));
+      } catch (err) {
+        console.error('[Orbit DB] Failed to persist database to localStorage:', err);
+      }
+    }
+  }
+
+  async deleteDatabase(): Promise<void> {
+    if (this.isTauri && this.dbPath) {
+      try {
+        const { remove } = await import('@tauri-apps/plugin-fs');
+        await remove(this.dbPath);
+      } catch {
+        // File may not exist
+      }
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem('orbit_sqlite_data');
+    }
+  }
+}
+
 class OrbitDatabase {
   private db: SqlJsDatabase | null = null;
   private isInitialized = false;
   private initPromise: Promise<void> | null = null;
+  private persistence = new PersistenceLayer();
+  private persistDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   public async initialize(): Promise<void> {
     if (this.isInitialized && this.db) return;
@@ -15,31 +136,22 @@ class OrbitDatabase {
 
     this.initPromise = (async () => {
       try {
+        // Initialize persistence layer first
+        await this.persistence.initialize();
+
         const SQL = await initSqlJs({
-          // In Node or Vite test environments, locateFile can be omitted or resolve wasm
           locateFile: (file) => `https://sql.js.org/dist/${file}`
         });
 
-        // Attempt to load from localStorage if in browser environment
-        let savedDb: Uint8Array | undefined;
-        if (typeof window !== 'undefined' && window.localStorage) {
-          const raw = window.localStorage.getItem('orbit_sqlite_data');
-          if (raw) {
-            const binary = atob(raw);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) {
-              bytes[i] = binary.charCodeAt(i);
-            }
-            savedDb = bytes;
-          }
-        }
+        // Load existing database from filesystem or localStorage
+        const savedDb = await this.persistence.loadDatabase();
 
         this.db = new SQL.Database(savedDb);
         this.runMigrations();
         this.isInitialized = true;
+        console.log('[Orbit DB] Database initialized successfully.');
       } catch (err) {
-        console.warn('Wasm sql.js remote load failed, falling back to local fallback db:', err);
-        // Fallback to standard in-memory mock if wasm fetch is restricted
+        console.warn('[Orbit DB] WASM remote load failed, falling back to in-memory:', err);
         const SQL = await initSqlJs();
         this.db = new SQL.Database();
         this.runMigrations();
@@ -147,21 +259,28 @@ class OrbitDatabase {
     this.persist();
   }
 
+  /**
+   * Persist database to filesystem (debounced to avoid excessive writes)
+   */
   public persist(): void {
     if (!this.db) return;
-    if (typeof window !== 'undefined' && window.localStorage) {
+
+    // Debounce persistence — write at most once every 500ms
+    if (this.persistDebounceTimer) {
+      clearTimeout(this.persistDebounceTimer);
+    }
+
+    this.persistDebounceTimer = setTimeout(() => {
+      if (!this.db) return;
       try {
         const data = this.db.export();
-        let binary = '';
-        const len = data.byteLength;
-        for (let i = 0; i < len; i++) {
-          binary += String.fromCharCode(data[i]);
-        }
-        window.localStorage.setItem('orbit_sqlite_data', btoa(binary));
+        this.persistence.saveDatabase(data).catch((err) => {
+          console.error('[Orbit DB] Persistence failed:', err);
+        });
       } catch (err) {
-        console.error('Failed to persist database to localStorage:', err);
+        console.error('[Orbit DB] Export failed:', err);
       }
-    }
+    }, 500);
   }
 
   // --- Audit Log operations ---
@@ -362,9 +481,7 @@ class OrbitDatabase {
 
   public resetAllData(): void {
     if (!this.db) return;
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.removeItem('orbit_sqlite_data');
-    }
+    this.persistence.deleteDatabase().catch(console.error);
     this.runMigrations();
   }
 }

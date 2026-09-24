@@ -309,7 +309,7 @@ export const useCommandStore = create<CommandState>((set, get) => ({
     // Check if auto-approved (LOW risk, or Fast Mode enabled for non-critical actions)
     const shouldAutoRun = !isDryRun && plan.actions.length > 0 && (
       policyResult.canAutoExecute ||
-      (get().fastMode && plan.overallRisk !== 'CRITICAL')
+      (get().fastMode && plan.overallRisk === 'LOW')
     );
 
     if (shouldAutoRun) {
