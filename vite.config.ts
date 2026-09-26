@@ -13,9 +13,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: false,
-    host: true,
-    cors: true,
-    allowedHosts: true,
+    host: '127.0.0.1',
+  },
+  build: {
+    rollupOptions: {
+      external: ['@tauri-apps/plugin-fs'],
+    },
   },
   test: {
     globals: true,
