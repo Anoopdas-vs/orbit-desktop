@@ -26,17 +26,17 @@ class PersistenceLayer {
         // Dynamic import to avoid bundling issues in browser mode
         const { appDataDir, join } = await import('@tauri-apps/api/path');
         const dataDir = await appDataDir();
-        this.dbPath = await join(dataDir, 'orbit.db');
-        console.log('[Orbit DB] Tauri mode — persisting to:', this.dbPath);
+        this.dbPath = await join(dataDir, 'janki.db');
+        console.log('[Janki DB] Tauri mode — persisting to:', this.dbPath);
       } catch (err) {
-        console.warn('[Orbit DB] Tauri path API failed, falling back to localStorage:', err);
+        console.warn('[Janki DB] Tauri path API failed, falling back to localStorage:', err);
         this.isTauri = false;
       }
     }
 
     if (!this.isTauri) {
       console.warn(
-        '[Orbit DB] Browser mode — database stored in localStorage (ephemeral). ' +
+        '[Janki DB] Browser mode — database stored in localStorage (ephemeral). ' +
         'Data will be lost if browser cache is cleared. ' +
         'Build and run as Tauri desktop app for persistent storage.'
       );
@@ -46,7 +46,8 @@ class PersistenceLayer {
   async loadDatabase(): Promise<Uint8Array | undefined> {
     if (this.isTauri && this.dbPath) {
       try {
-        const { readFile } = await import('@tauri-apps/plugin-fs');
+        const fsPkg = '@tauri-apps/plugin-fs';
+        const { readFile } = await import(/* @vite-ignore */ fsPkg);
         const data = await readFile(this.dbPath);
         return new Uint8Array(data);
       } catch {
@@ -55,9 +56,9 @@ class PersistenceLayer {
       }
     }
 
-    // Browser fallback: localStorage
+    // Browser fallback: localStorage (check janki_sqlite_data then legacy orbit_sqlite_data)
     if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem('orbit_sqlite_data');
+      const raw = window.localStorage.getItem('janki_sqlite_data') || window.localStorage.getItem('orbit_sqlite_data');
       if (raw) {
         try {
           const binary = atob(raw);
@@ -67,7 +68,7 @@ class PersistenceLayer {
           }
           return bytes;
         } catch (err) {
-          console.error('[Orbit DB] Failed to decode localStorage data:', err);
+          console.error('[Janki DB] Failed to decode localStorage data:', err);
         }
       }
     }
@@ -78,7 +79,8 @@ class PersistenceLayer {
   async saveDatabase(data: Uint8Array): Promise<void> {
     if (this.isTauri && this.dbPath) {
       try {
-        const { writeFile, mkdir } = await import('@tauri-apps/plugin-fs');
+        const fsPkg = '@tauri-apps/plugin-fs';
+        const { writeFile, mkdir } = await import(/* @vite-ignore */ fsPkg);
         const { appDataDir } = await import('@tauri-apps/api/path');
         // Ensure app data directory exists
         try {
@@ -89,7 +91,7 @@ class PersistenceLayer {
         await writeFile(this.dbPath, data);
         return;
       } catch (err) {
-        console.error('[Orbit DB] Tauri file write failed:', err);
+        console.error('[Janki DB] Tauri file write failed:', err);
       }
     }
 
@@ -101,9 +103,9 @@ class PersistenceLayer {
         for (let i = 0; i < len; i++) {
           binary += String.fromCharCode(data[i]);
         }
-        window.localStorage.setItem('orbit_sqlite_data', btoa(binary));
+        window.localStorage.setItem('janki_sqlite_data', btoa(binary));
       } catch (err) {
-        console.error('[Orbit DB] Failed to persist database to localStorage:', err);
+        console.error('[Janki DB] Failed to persist database to localStorage:', err);
       }
     }
   }
@@ -111,19 +113,21 @@ class PersistenceLayer {
   async deleteDatabase(): Promise<void> {
     if (this.isTauri && this.dbPath) {
       try {
-        const { remove } = await import('@tauri-apps/plugin-fs');
+        const fsPkg = '@tauri-apps/plugin-fs';
+        const { remove } = await import(/* @vite-ignore */ fsPkg);
         await remove(this.dbPath);
       } catch {
         // File may not exist
       }
     }
     if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem('janki_sqlite_data');
       window.localStorage.removeItem('orbit_sqlite_data');
     }
   }
 }
 
-class OrbitDatabase {
+class JankiDatabase {
   private db: SqlJsDatabase | null = null;
   private isInitialized = false;
   private initPromise: Promise<void> | null = null;
@@ -140,7 +144,7 @@ class OrbitDatabase {
         await this.persistence.initialize();
 
         const SQL = await initSqlJs({
-          locateFile: (file) => `https://sql.js.org/dist/${file}`
+          locateFile: (file) => (typeof window !== 'undefined' ? `/${file}` : `node_modules/sql.js/dist/${file}`)
         });
 
         // Load existing database from filesystem or localStorage
@@ -149,9 +153,9 @@ class OrbitDatabase {
         this.db = new SQL.Database(savedDb);
         this.runMigrations();
         this.isInitialized = true;
-        console.log('[Orbit DB] Database initialized successfully.');
+        console.log('[Janki DB] Database initialized successfully.');
       } catch (err) {
-        console.warn('[Orbit DB] WASM remote load failed, falling back to in-memory:', err);
+        console.warn('[Janki DB] Local WASM load fallback, initializing in-memory:', err);
         const SQL = await initSqlJs();
         this.db = new SQL.Database();
         this.runMigrations();
@@ -275,10 +279,10 @@ class OrbitDatabase {
       try {
         const data = this.db.export();
         this.persistence.saveDatabase(data).catch((err) => {
-          console.error('[Orbit DB] Persistence failed:', err);
+          console.error('[Janki DB] Persistence failed:', err);
         });
       } catch (err) {
-        console.error('[Orbit DB] Export failed:', err);
+        console.error('[Janki DB] Export failed:', err);
       }
     }, 500);
   }
@@ -486,4 +490,5 @@ class OrbitDatabase {
   }
 }
 
-export const orbitDb = new OrbitDatabase();
+export const jankiDb = new JankiDatabase();
+export const orbitDb = jankiDb;

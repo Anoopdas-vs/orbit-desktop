@@ -1,5 +1,5 @@
 -- ============================================================================
--- Orbit macOS Desktop Assistant - SQLite Database Schema
+-- Janki macOS Desktop Assistant - SQLite Database Schema
 -- Version 1.0 (Append-Only Audit & Persistent Local State)
 -- ============================================================================
 
