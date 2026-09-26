@@ -86,49 +86,10 @@ export const guiControllerSkill: SkillManifest<GuiControllerInput, GuiActionResu
       };
     }
 
-    // Try executing through native macOS bridge server
+    // Try executing through native macOS bridge (Tauri IPC in desktop, dev server in browser)
     try {
-      if (
-        typeof window !== 'undefined' &&
-        window.location?.protocol?.startsWith('http') &&
-        typeof window.fetch === 'function'
-      ) {
-        const url = `${window.location.origin}/api/macos/gui-action`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(input),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return {
-            success: true,
-            data: {
-              action: input.action,
-              appName: input.appName,
-              target: input.target,
-              text: input.text,
-              key: input.key,
-              shortcut: input.shortcut,
-              x: input.x,
-              y: input.y,
-              executed: true,
-              message: data.stdout || `Successfully executed GUI ${input.action} in ${input.appName}`,
-            },
-            message: data.stdout || `Successfully executed GUI ${input.action} in ${input.appName}`,
-            stdout: data.stdout,
-            durationMs: performance.now() - start,
-          };
-        }
-      }
-    } catch (err: any) {
-      console.warn('Native macOS bridge unavailable, using safe fallback:', err);
-    }
-
-    // Safe fallback simulation for headless/test environment
-    return {
-      success: true,
-      data: {
+      const { nativeBridge } = await import('../adapters/native/tauri-bridge');
+      const data = await nativeBridge.guiAction({
         action: input.action,
         appName: input.appName,
         target: input.target,
@@ -137,12 +98,44 @@ export const guiControllerSkill: SkillManifest<GuiControllerInput, GuiActionResu
         shortcut: input.shortcut,
         x: input.x,
         y: input.y,
-        executed: true,
-        message: `Dispatched ${input.action} to ${input.appName}`,
-      },
-      message: `Dispatched ${input.action} to ${input.appName}`,
-      stdout: `[GUI Simulation] ${input.action} -> ${input.appName}`,
-      durationMs: performance.now() - start,
-    };
+      });
+      return {
+        success: data.success,
+        data: {
+          action: input.action,
+          appName: data.appName || input.appName,
+          target: input.target,
+          text: input.text,
+          key: input.key,
+          shortcut: input.shortcut,
+          x: input.x,
+          y: input.y,
+          executed: data.success,
+          message: data.stdout || `Executed GUI ${input.action} in ${input.appName}`,
+        },
+        message: data.stdout || `Executed GUI ${input.action} in ${input.appName}`,
+        stdout: data.stdout,
+        error: data.error,
+        durationMs: performance.now() - start,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || `Native GUI automation failed: ${input.action}`,
+        data: {
+          action: input.action,
+          appName: input.appName || '',
+          target: input.target,
+          text: input.text,
+          key: input.key,
+          shortcut: input.shortcut,
+          x: input.x,
+          y: input.y,
+          executed: false,
+          message: err.message || 'Execution failed',
+        },
+        durationMs: performance.now() - start,
+      };
+    }
   },
 };

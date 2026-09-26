@@ -33,7 +33,7 @@ describe('Terminal Runner Security & Allowlist Enforcement', () => {
     for (const cmd of dangerous) {
       const res = isCommandAllowed(cmd);
       expect(res.allowed).toBe(false);
-      expect(res.reason).toContain('Command blocked by Orbit security policy');
+      expect(res.reason).toContain('Command blocked by Janki security policy');
     }
   });
 

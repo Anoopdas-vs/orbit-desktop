@@ -66,39 +66,23 @@ export const aiPromptAgentSkill: SkillManifest<AiPromptAgentInput, AiPromptAgent
     const useNative = !input.forceBrowser && appCheck.available;
     const mode = tool === 'ollama' ? 'local_api' : (useNative ? 'native_app' : 'browser_web');
 
-    // 2. Dispatch in fastest mode via native macOS bridge (with clipboard paste acceleration)
+    // 2. Dispatch via native bridge (Tauri IPC in desktop, dev server in browser)
     try {
-      if (
-        typeof window !== 'undefined' &&
-        window.location?.protocol?.startsWith('http') &&
-        typeof window.fetch === 'function'
-      ) {
-        const bridgeUrl = `${window.location.origin}/api/macos/prompt-ai`;
-        const res = await fetch(bridgeUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      const { nativeBridge } = await import('../adapters/native/tauri-bridge');
+      const data = await nativeBridge.promptAi(tool, input.prompt, input.useClipboardAcceleration ?? true);
+      if (data && data.success) {
+        return {
+          success: true,
+          data: {
             tool,
+            mode: (data.mode as any) || mode,
             prompt: input.prompt,
-            mode,
-            useClipboardAcceleration: input.useClipboardAcceleration ?? true,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return {
-            success: true,
-            data: {
-              tool,
-              mode: data.mode || mode,
-              prompt: input.prompt,
-              appVerified: appCheck.available,
-              message: data.message || `Dispatched prompt to ${tool} in ${mode} mode.`,
-            },
+            appVerified: appCheck.available,
             message: data.message || `Dispatched prompt to ${tool} in ${mode} mode.`,
-            durationMs: performance.now() - start,
-          };
-        }
+          },
+          message: data.message || `Dispatched prompt to ${tool} in ${mode} mode.`,
+          durationMs: performance.now() - start,
+        };
       }
     } catch (err: any) {
       console.warn('Native macOS bridge prompt-ai failed, using browser fallback:', err);

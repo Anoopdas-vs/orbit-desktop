@@ -60,7 +60,7 @@ export function isCommandAllowed(command: string): { allowed: boolean; reason?: 
     if (pattern.test(trimmed)) {
       return {
         allowed: false,
-        reason: `Command blocked by Orbit security policy: detected forbidden pattern matching ${pattern.toString()}`,
+        reason: `Command blocked by Janki security policy: detected forbidden pattern matching ${pattern.toString()}`,
       };
     }
   }
@@ -136,74 +136,23 @@ export const terminalRunnerSkill: SkillManifest<TerminalRunnerInput> = {
     killSwitch.registerProcess(procId, input.command, abortController);
 
     try {
-      // 1. Attempt execution via native macOS bridge server
-      if (
-        typeof window !== 'undefined' &&
-        window.location?.protocol?.startsWith('http') &&
-        typeof window.fetch === 'function'
-      ) {
-        try {
-          const bridgeUrl = `${window.location.origin}/api/macos/exec-command`;
-          const res = await fetch(bridgeUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              command: input.command,
-              cwd: input.cwd,
-              timeoutMs: input.timeoutMs,
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            killSwitch.unregisterProcess(procId);
-            return {
-              success: data.success,
-              data: { command: input.command, exitCode: data.exitCode },
-              stdout: data.stdout,
-              stderr: data.stderr,
-              exitCode: data.exitCode,
-              error: data.error,
-              durationMs: performance.now() - start,
-            };
-          }
-        } catch (fetchErr) {
-          console.warn('Bridge exec-command unavailable, using fallback:', fetchErr);
-        }
-      }
-
-      // 2. High-fidelity safe fallback for test / simulated environment
-      const sanitized = redactSensitiveData(input.command).redactedText;
-      let outputStdout = '';
-      let exitCode = 0;
-
-      if (input.command.includes('npm test') || input.command.includes('vitest')) {
-        outputStdout = `✓ tests/action-plan.test.ts (6 tests) 14ms\n✓ tests/policy-engine.test.ts (8 tests) 22ms\n✓ tests/terminal-runner.test.ts (10 tests) 18ms\n\nTest Files  3 passed (3)\nTests  24 passed (24)\nDuration  482ms`;
-      } else if (input.command.includes('npm run dev')) {
-        outputStdout = `  VITE v6.1.0  ready in 184 ms\n\n  ➜  Local:   http://localhost:5174/\n  ➜  Network: use --host to expose`;
-      } else if (input.command.includes('git status')) {
-        outputStdout = `On branch main\nYour branch is up to date with 'origin/main'.\n\nChanges not staged for commit:\n  modified:   src/App.tsx\n\nno changes added to commit (use "git add" to update)`;
-      } else if (input.command.includes('git diff')) {
-        outputStdout = `diff --git a/src/App.tsx b/src/App.tsx\n--- a/src/App.tsx\n+++ b/src/App.tsx\n@@ -10,3 +10,5 @@\n+ // Added dark mode toggle\n+ export const isDark = true;`;
-      } else if (input.command.includes('git checkout -b')) {
-        const branch = input.command.replace('git checkout -b', '').trim();
-        outputStdout = `Switched to a new branch '${branch}'`;
-      } else {
-        outputStdout = `[Orbit Runner] Successfully executed allowlisted command: ${sanitized}`;
-      }
-
+      const { nativeBridge } = await import('../adapters/native/tauri-bridge');
+      const data = await nativeBridge.execCommand(input.command, input.cwd);
       killSwitch.unregisterProcess(procId);
       return {
-        success: true,
-        data: { command: sanitized, exitCode },
-        stdout: outputStdout,
-        exitCode: 0,
+        success: data.success,
+        data: { command: input.command, exitCode: data.exitCode },
+        stdout: data.stdout,
+        stderr: data.stderr,
+        exitCode: data.exitCode,
+        error: data.error,
         durationMs: performance.now() - start,
       };
     } catch (err: any) {
       killSwitch.unregisterProcess(procId);
       return {
         success: false,
-        error: err.message || 'Subprocess execution error',
+        error: err.message || 'Subprocess execution error: native execution failed',
         exitCode: 1,
         durationMs: performance.now() - start,
       };

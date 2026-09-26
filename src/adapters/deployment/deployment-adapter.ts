@@ -30,7 +30,7 @@ export class DeploymentAdapter {
   public async deploy(request: DeploymentRequest): Promise<DeploymentResult> {
     const deployId = `dpl_${crypto.randomUUID().slice(0, 8)}`;
     const isProd = request.environment === 'production';
-    const domain = isProd ? 'orbit-app.example.com' : `staging-${deployId}.orbit-app.example.com`;
+    const domain = isProd ? 'janki-app.example.com' : `staging-${deployId}.janki-app.example.com`;
 
     return {
       success: true,
@@ -39,14 +39,14 @@ export class DeploymentAdapter {
       environment: request.environment,
       url: `https://${domain}`,
       gitRevision: request.gitRevision,
-      rollbackGuidance: `To rollback, run: orbit deploy --target ${request.target} --rollback-to ${request.gitRevision}^`,
+      rollbackGuidance: `To rollback, run: janki deploy --target ${request.target} --rollback-to ${request.gitRevision}^`,
       deployedAt: new Date().toISOString(),
       logs: [
-        `[Orbit Deployer] Target: ${request.target} | Env: ${request.environment}`,
-        `[Orbit Deployer] Built git revision: ${request.gitRevision}`,
-        `[Orbit Deployer] Uploaded bundle (1.4MB compressed)`,
-        `[Orbit Deployer] Health check passed (HTTP 200 OK at /api/health)`,
-        `[Orbit Deployer] Domain live: https://${domain}`
+        `[Janki Deployer] Target: ${request.target} | Env: ${request.environment}`,
+        `[Janki Deployer] Built git revision: ${request.gitRevision}`,
+        `[Janki Deployer] Uploaded bundle (1.4MB compressed)`,
+        `[Janki Deployer] Health check passed (HTTP 200 OK at /api/health)`,
+        `[Janki Deployer] Domain live: https://${domain}`
       ]
     };
   }

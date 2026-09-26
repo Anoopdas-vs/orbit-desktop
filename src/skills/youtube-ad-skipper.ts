@@ -40,21 +40,14 @@ class YouTubeAdSkipperDaemon {
 
   public async triggerSkip(): Promise<{ skipped: boolean; status: string; message: string }> {
     try {
-      if (
-        typeof window !== 'undefined' &&
-        window.location?.protocol?.startsWith('http') &&
-        typeof window.fetch === 'function'
-      ) {
-        const url = `${window.location.origin}/api/macos/youtube-skip-ad`;
-        const res = await fetch(url, { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          return {
-            skipped: !!data.skipped,
-            status: data.status || 'CHECKED',
-            message: data.message || 'Checked YouTube tabs for ads.',
-          };
-        }
+      const { nativeBridge } = await import('../adapters/native/tauri-bridge');
+      const data = await nativeBridge.youtubeSkipAd();
+      if (data) {
+        return {
+          skipped: !!data.skipped,
+          status: data.status || 'CHECKED',
+          message: data.message || 'Checked YouTube tabs for ads.',
+        };
       }
     } catch {
       // In simulated / test mode

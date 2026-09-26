@@ -38,11 +38,11 @@ export class GitHubAdapter {
     return [
       {
         id: 101,
-        name: 'orbit-desktop',
-        fullName: 'local-user/orbit-desktop',
+        name: 'janki-desktop',
+        fullName: 'local-user/janki-desktop',
         defaultBranch: 'main',
         isPrivate: true,
-        htmlUrl: 'https://github.com/local-user/orbit-desktop'
+        htmlUrl: 'https://github.com/local-user/janki-desktop'
       },
       {
         id: 102,

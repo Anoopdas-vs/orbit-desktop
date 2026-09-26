@@ -153,24 +153,11 @@ export const youTubeLauncherSkill: SkillManifest<YouTubeLauncherInput> = {
       // 2. Try dynamically resolving direct watch URL if it was a generic search URL
       if (!isDirectVideo) {
         try {
-          if (
-            typeof window !== 'undefined' &&
-            window.location?.protocol?.startsWith('http') &&
-            typeof window.fetch === 'function'
-          ) {
-            const resolveUrl = `${window.location.origin}/api/macos/resolve-youtube`;
-            const resResolve = await fetch(resolveUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query: musicSearch }),
-            });
-            if (resResolve.ok) {
-              const resData = await resResolve.json();
-              if (resData.targetUrl && resData.isDirectVideo) {
-                targetUrl = resData.targetUrl;
-                isDirectVideo = true;
-              }
-            }
+          const { nativeBridge } = await import('../adapters/native/tauri-bridge');
+          const resData = await nativeBridge.resolveYouTube(musicSearch);
+          if (resData && resData.targetUrl && resData.isDirectVideo) {
+            targetUrl = resData.targetUrl;
+            isDirectVideo = true;
           }
         } catch (err) {
           console.warn('Dynamic YouTube video resolver notice:', err);
@@ -185,20 +172,10 @@ export const youTubeLauncherSkill: SkillManifest<YouTubeLauncherInput> = {
 
       let launchedViaBridge = false;
       try {
-        if (
-          typeof window !== 'undefined' &&
-          window.location?.protocol?.startsWith('http') &&
-          typeof window.fetch === 'function'
-        ) {
-          const bridgeUrl = `${window.location.origin}/api/macos/open-url`;
-          const res = await fetch(bridgeUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: targetUrl, browser: input.browser }),
-          });
-          if (res.ok) {
-            launchedViaBridge = true;
-          }
+        const { nativeBridge } = await import('../adapters/native/tauri-bridge');
+        const res = await nativeBridge.openUrl(targetUrl, input.browser);
+        if (res && res.success) {
+          launchedViaBridge = true;
         }
       } catch (err) {
         console.warn('Bridge open-url failed, trying window.open fallback:', err);

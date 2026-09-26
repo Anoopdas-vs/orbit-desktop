@@ -53,34 +53,21 @@ export async function checkApplicationAvailability(
     }
   }
 
-  // 2. Query native macOS bridge endpoint
+  // 2. Query native macOS bridge (Tauri IPC in desktop mode, dev server in browser mode)
   try {
-    if (
-      typeof window !== 'undefined' &&
-      window.location?.protocol?.startsWith('http') &&
-      typeof window.fetch === 'function'
-    ) {
-      const url = `${window.location.origin}/api/macos/check-app`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appName }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const result: AppAvailabilityResult = {
-          appName: data.appName || appName,
-          available: !!data.available,
-          isRunning: !!data.isRunning,
-          appPath: data.appPath,
-          fastestMode: data.fastestMode || (data.available ? 'native_app' : 'browser_web'),
-          message: data.message || `Checked ${appName}: ${data.available ? 'Available' : 'Not installed'}`,
-        };
-
-        // Cache for 60 seconds
-        APP_CACHE.set(cleanName, { result, expiresAt: Date.now() + 60000 });
-        return result;
-      }
+    const { nativeBridge } = await import('../adapters/native/tauri-bridge');
+    const data = await nativeBridge.checkApp(appName);
+    if (data && data.appName) {
+      const result: AppAvailabilityResult = {
+        appName: data.appName,
+        available: !!data.available,
+        isRunning: !!data.isRunning,
+        appPath: data.appPath,
+        fastestMode: (data.fastestMode as any) || (data.available ? 'native_app' : 'browser_web'),
+        message: data.message || `Checked ${appName}: ${data.available ? 'Available' : 'Not installed'}`,
+      };
+      APP_CACHE.set(cleanName, { result, expiresAt: Date.now() + 60000 });
+      return result;
     }
   } catch {
     // Bridge unavailable; proceed to fast local heuristic
