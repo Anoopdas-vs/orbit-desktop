@@ -33,7 +33,7 @@ export const AuditView: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `orbit_audit_ledger_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `janki_audit_ledger_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -48,7 +48,7 @@ export const SettingsView: React.FC = () => {
       <div className="border-b border-slate-800 pb-4">
         <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
           <Sliders className="w-4 h-4 text-blue-400" />
-          Orbit Application Settings
+          Janki Application Settings
         </h2>
         <p className="text-xs text-slate-400 mt-1">
           Configure local-first adapters, speech recognition, trading caps, and credential boundaries.
@@ -120,7 +120,7 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
           <p className="text-[11px] text-slate-400">
-            Note: If Ollama is offline or uninstalled, Orbit gracefully operates in deterministic rule-based mode.
+            Note: If Ollama is offline or uninstalled, Janki gracefully operates in deterministic rule-based mode.
           </p>
         </div>
 
@@ -136,7 +136,7 @@ export const SettingsView: React.FC = () => {
               <span>Zero Plaintext Secret Storage Guarantee</span>
             </div>
             <p className="text-slate-400 text-[11px] leading-relaxed">
-              Orbit never saves API keys, Binance secrets, or GitHub tokens in SQLite, logs, or .env files. Real credentials reside exclusively in the encrypted <strong>macOS Keychain</strong> via Apple's Security framework.
+              Janki never saves API keys, Binance secrets, or GitHub tokens in SQLite, logs, or .env files. Real credentials reside exclusively in the encrypted <strong>macOS Keychain</strong> via Apple's Security framework.
             </p>
           </div>
         </div>

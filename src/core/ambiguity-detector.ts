@@ -34,7 +34,7 @@ export function detectAmbiguity(prompt: string, registeredProjects: string[] = [
       return {
         isAmbiguous: true,
         category: 'TRADING_VAGUE',
-        clarificationQuestion: 'Orbit does not make autonomous investment decisions. Please specify an exact pair (e.g. BTC/USDT) and amount (e.g. "Prepare a BTC spot buy order for ₹1,000").',
+        clarificationQuestion: 'Janki does not make autonomous investment decisions. Please specify an exact pair (e.g. BTC/USDT) and amount (e.g. "Prepare a BTC spot buy order for ₹1,000").',
         suggestedOptions: [
           'Prepare a BTC spot buy order for ₹1,000',
           'Show BTC price',

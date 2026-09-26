@@ -1,5 +1,5 @@
 /**
- * Redactor module for Orbit Assistant
+ * Redactor module for Janki Assistant
  * Ensures API keys, tokens, .env contents, and passwords are never exposed
  * in logs, UI, or sent to an LLM.
  */

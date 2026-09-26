@@ -88,7 +88,7 @@ export const gitWorkflowSkill: SkillManifest<GitWorkflowInput> = {
       case 'diff':
         return {
           success: true,
-          stdout: '+ // Added safe workflow\n+ export const orbitActive = true;',
+          stdout: '+ // Added safe workflow\n+ export const jankiActive = true;',
           durationMs: performance.now() - start,
         };
 

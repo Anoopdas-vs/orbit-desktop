@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { AuditLogEntry, ExecutionLog, ApprovalEvent } from '../types/audit';
 import { TradeJournalEntry } from '../types/trading';
-import { orbitDb } from '../db/database';
+import { jankiDb } from '../db/database';
 
 interface AuditState {
   entries: AuditLogEntry[];
@@ -24,7 +24,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
       id: 'init-audit-1',
       timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
       source: 'system',
-      rawCommand: 'System Boot: Orbit Security Agent Initialized',
+      rawCommand: 'System Boot: Janki Security Agent Initialized',
       interpretedIntent: 'System Boot',
       overallRisk: 'LOW',
       approvalStatus: 'AUTO_APPROVED',
@@ -40,22 +40,22 @@ export const useAuditStore = create<AuditState>((set, get) => ({
   tradeJournal: [],
 
   addAuditEntry: (entry: AuditLogEntry) => {
-    orbitDb.logCommand(entry);
+    jankiDb.logCommand(entry);
     set((state) => ({ entries: [entry, ...state.entries] }));
   },
 
   addExecutionLog: (log: ExecutionLog) => {
-    orbitDb.logExecution(log);
+    jankiDb.logExecution(log);
     set((state) => ({ executionLogs: [log, ...state.executionLogs] }));
   },
 
   addApprovalEvent: (event: ApprovalEvent) => {
-    orbitDb.logApproval(event);
+    jankiDb.logApproval(event);
     set((state) => ({ approvalEvents: [event, ...state.approvalEvents] }));
   },
 
   addTradeJournal: (entry: TradeJournalEntry) => {
-    orbitDb.logTradeJournal(entry);
+    jankiDb.logTradeJournal(entry);
     set((state) => ({ tradeJournal: [entry, ...state.tradeJournal] }));
   },
 
@@ -63,7 +63,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     const state = get();
     return JSON.stringify(
       {
-        appName: 'Orbit Assistant',
+        appName: 'Janki Assistant',
         exportedAt: new Date().toISOString(),
         entries: state.entries,
         executionLogs: state.executionLogs,
@@ -76,7 +76,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
   },
 
   clearLogs: () => {
-    orbitDb.resetAllData();
+    jankiDb.resetAllData();
     set({ entries: [], executionLogs: [], approvalEvents: [], tradeJournal: [] });
   }
 }));

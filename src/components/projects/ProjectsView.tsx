@@ -46,7 +46,7 @@ export const ProjectsView: React.FC = () => {
             Approved Project Workspaces
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Orbit only operates inside explicitly registered project directories. Arbitrary filesystem execution is prohibited.
+            Janki only operates inside explicitly registered project directories. Arbitrary filesystem execution is prohibited.
           </p>
         </div>
 

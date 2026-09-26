@@ -210,7 +210,7 @@ export class PolicyEngine {
               allowed: false,
               requiresApproval: false,
               approvalType: 'none',
-              rejectionReason: 'Force push is strictly blocked by Orbit safety policy.',
+              rejectionReason: 'Force push is strictly blocked by Janki safety policy.',
               riskLevel: 'CRITICAL',
             };
           }

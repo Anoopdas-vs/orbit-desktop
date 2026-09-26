@@ -12,7 +12,7 @@ export const DesktopFrame: React.FC<DesktopFrameProps> = ({ children }) => {
   const { isRecording, wakeWordEnabled, toggleWakeWord, ttsEnabled, toggleTts } = useCommandStore();
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-orbit-bg text-slate-100 select-none overflow-hidden font-sans">
+    <div className="flex flex-col h-screen w-screen bg-janki-bg text-slate-100 select-none overflow-hidden font-sans">
       {/* macOS Native-Style Custom Titlebar */}
       <header className="h-10 bg-slate-950/80 border-b border-slate-800/80 flex items-center justify-between px-3 z-30 backdrop-blur-md">
         {/* macOS Traffic Lights & Janki Brand */}

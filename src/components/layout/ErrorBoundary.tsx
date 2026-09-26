@@ -22,7 +22,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error('[Orbit Error Boundary] Uncaught error:', error, errorInfo);
+    console.error('[Janki Error Boundary] Uncaught error:', error, errorInfo);
     this.setState({ errorInfo });
   }
 
@@ -33,14 +33,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center min-h-screen bg-orbit-bg p-8">
+        <div className="flex items-center justify-center min-h-screen bg-janki-bg p-8">
           <div className="max-w-lg w-full bg-slate-900 border border-red-500/30 rounded-xl p-8 text-center space-y-4">
             <div className="flex justify-center">
               <AlertTriangle className="w-12 h-12 text-red-400" />
             </div>
             <h1 className="text-xl font-bold text-slate-100">Something went wrong</h1>
             <p className="text-sm text-slate-400">
-              Orbit encountered an unexpected error. Your data and audit logs are safe.
+              Janki encountered an unexpected error. Your data and audit logs are safe.
             </p>
             {this.state.error && (
               <pre className="text-xs text-red-300 bg-slate-950 rounded-lg p-4 overflow-auto max-h-32 text-left font-mono">

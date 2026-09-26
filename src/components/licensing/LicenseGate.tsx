@@ -64,7 +64,7 @@ export const LicenseGate: React.FC<LicenseGateProps> = ({ children }) => {
               <Shield className="w-8 h-8 text-white" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">Orbit Desktop Assistant</h1>
+          <h1 className="text-2xl font-bold text-white">Janki Desktop Assistant</h1>
           <p className="text-sm text-slate-400">
             {status.type === 'expired_trial'
               ? 'Your free trial has expired. Enter a license key to continue.'
@@ -76,7 +76,7 @@ export const LicenseGate: React.FC<LicenseGateProps> = ({ children }) => {
         {status.type === 'expired_trial' && (
           <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
             <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
-            <p className="text-xs text-red-300">Trial expired. Please activate a license to continue using Orbit.</p>
+            <p className="text-xs text-red-300">Trial expired. Please activate a license to continue using Janki.</p>
           </div>
         )}
 
@@ -92,7 +92,7 @@ export const LicenseGate: React.FC<LicenseGateProps> = ({ children }) => {
                 setLicenseKey(e.target.value.toUpperCase());
                 setError(null);
               }}
-              placeholder="ORBIT-XXXX-XXXX-XXXX-XXXX"
+              placeholder="JANKI-XXXX-XXXX-XXXX-XXXX"
               className="w-full pl-10 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm font-mono placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               onKeyDown={(e) => e.key === 'Enter' && handleActivate()}
             />
@@ -135,7 +135,7 @@ export const LicenseGate: React.FC<LicenseGateProps> = ({ children }) => {
             rel="noopener noreferrer"
             className="text-xs text-blue-400 hover:text-blue-300 underline"
           >
-            Purchase a license at orbit-assistant.gumroad.com
+            Purchase a license
           </a>
         </div>
       </div>
