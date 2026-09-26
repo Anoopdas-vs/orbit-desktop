@@ -1,8 +1,8 @@
 [package]
-name = "orbit"
+name = "janki"
 version = "0.1.0"
-description = "Orbit - Safe Local macOS Voice Desktop Assistant"
-authors = ["Orbit Developers"]
+description = "Janki - Autonomous Desktop Platform"
+authors = ["Janki Developers"]
 edition = "2021"
 
 [build-dependencies]
