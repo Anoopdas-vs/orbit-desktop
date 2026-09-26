@@ -9,7 +9,10 @@ import { youtubeAdSkipperDaemon } from '../skills/youtube-ad-skipper';
 import { personaEngine } from './persona-engine';
 import { moodIntelligence } from '../skills/mood-intelligence';
 import { tradingAdvisoryDesk } from '../skills/trading-advisory';
-import { autonomousReporter } from '../skills/autonomous-reporter';
+import { actionPlanner } from './action-planner';
+import { contextualIntentResolver } from './contextual-intent-resolver';
+import { dynamicPlanner } from './dynamic-planner';
+import { taskContextManager } from '../context/task-context-manager';
 
 export interface RouterContext {
   registeredProjects: { id: string; name: string; rootPath: string }[];
@@ -249,6 +252,10 @@ export class CommandRouter {
         actions: []
       };
     }
+
+    // 5.5 Check Contextual Intent Resolution (Phase 3 Stage 2)
+    const contextual = contextualIntentResolver.resolve(effectivePrompt);
+    const resolvedPrompt = contextual.isContextual ? contextual.canonicalPrompt : effectivePrompt;
 
     // 6. Deterministic Routing Rules
     const actions: ActionItem[] = [];
@@ -605,6 +612,44 @@ export class CommandRouter {
       });
     }
 
+    // P2. Autonomous Multi-Step Computer Control Planner (Phase 2 & Phase 3)
+    // E.g. "Open Safari and search for...", "Open Calculator and calculate...", "Set volume to 40", Malayalam queries, Contextual follow-ups
+    else if (
+      (() => {
+        // 1. Try Phase 3 Dynamic Planner first (handles contextual resolution & compound goals)
+        const dynamicTask = dynamicPlanner.decomposeGoal(resolvedPrompt, contextual.resolvedApp);
+        if (dynamicTask && dynamicTask.steps.length > 0) {
+          interpretedIntent = dynamicTask.interpretedIntent;
+          actions.push(...dynamicPlanner.toActionItems(dynamicTask));
+          return true;
+        }
+
+        // 2. Fallback to Phase 2 ActionPlanner
+        const planned = actionPlanner.plan(effectivePrompt);
+        if (
+          planned &&
+          planned.steps.length > 0 &&
+          (planned.steps.length > 1 ||
+            lower.includes('search') ||
+            lower.includes('calculate') ||
+            lower.includes('volume') ||
+            lower.includes('mute') ||
+            lower.includes('minimize') ||
+            lower.includes('maximize') ||
+            lower.includes('zoom') ||
+            lower.includes('close window') ||
+            planned.language !== 'en')
+        ) {
+          interpretedIntent = planned.interpretedIntent;
+          actions.push(...actionPlanner.toActionItems(planned));
+          return true;
+        }
+        return false;
+      })()
+    ) {
+      // Intentionally empty: actions populated above
+    }
+
     else if (lower.startsWith('open ') && !lower.includes('binance') && !lower.includes('youtube')) {
       const appTarget = effectivePrompt.replace(/^open\s+/i, '').trim();
       const appCheck = await checkApplicationAvailability(appTarget);
@@ -851,6 +896,15 @@ export class CommandRouter {
     }
 
     const overallRisk = defaultPolicyEngine.calculateOverallRisk(actions);
+
+    // Record turn in TaskContextManager (Phase 3 Stage 1 & 2)
+    taskContextManager.recordTurn({
+      userPrompt: rawTrimmed,
+      interpretedIntent,
+      activeApp: contextual.resolvedApp,
+      actions: actions.map((a) => a.title),
+      success: true,
+    });
 
     return {
       id: crypto.randomUUID(),

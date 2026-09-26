@@ -15,6 +15,9 @@ const ALLOWED_APPS = [
   'ChatGPT',
   'WhatsApp',
   'Telegram',
+  'Calculator',
+  'TextEdit',
+  'System Settings',
 ];
 
 const ALLOWED_COMMAND_PREFIXES = [
@@ -732,6 +735,354 @@ export function macOSEndpointPlugin(): Plugin {
               url: targetUrl,
               prompt,
               message: `⚡ Opened ${tool} in browser with prompt loaded in fastest web mode.`,
+            });
+          });
+          return;
+        }
+
+        // 9. POST /api/macos/control
+        if (req.url === '/api/macos/control' && req.method === 'POST') {
+          const body = await parseBody();
+          const { action, appName, windowTitle, text, key, modifiers, x, y, width, height, deltaY, volumeLevel, force } = body;
+          const cleanApp = sanitizeForAppleScript(appName || 'System Events');
+          const cleanText = sanitizeForAppleScript(text || '');
+
+          let script = '';
+          if (action === 'activate_app') {
+            script = `tell application "${cleanApp}" to activate`;
+          } else if (action === 'quit_app') {
+            script = force
+              ? `tell application "System Events" to do shell script "killall -9 \\"${cleanApp}\\""`
+              : `tell application "${cleanApp}" to quit`;
+          } else if (action === 'focus_window') {
+            if (windowTitle) {
+              const cleanTitle = sanitizeForAppleScript(windowTitle);
+              script = `
+                tell application "System Events"
+                  tell process "${cleanApp}"
+                    set frontmost to true
+                    try
+                      perform action "AXRaise" of (first window whose name contains "${cleanTitle}")
+                    end try
+                  end tell
+                end tell
+              `;
+            } else {
+              script = `
+                tell application "System Events"
+                  tell process "${cleanApp}"
+                    set frontmost to true
+                  end tell
+                end tell
+              `;
+            }
+          } else if (action === 'minimize_window') {
+            script = `
+              tell application "System Events"
+                tell process "${cleanApp}"
+                  if (count of windows) > 0 then
+                    set value of attribute "AXMinimized" of window 1 to true
+                  end if
+                end tell
+              end tell
+            `;
+          } else if (action === 'zoom_window') {
+            script = `
+              tell application "System Events"
+                tell process "${cleanApp}"
+                  if (count of windows) > 0 then
+                    try
+                      click (first button of window 1 whose subrole is "AXZoomButton")
+                    end try
+                  end if
+                end tell
+              end tell
+            `;
+          } else if (action === 'close_window') {
+            script = `
+              tell application "System Events"
+                tell process "${cleanApp}"
+                  if (count of windows) > 0 then
+                    try
+                      click (first button of window 1 whose subrole is "AXCloseButton")
+                    on error
+                      keystroke "w" using command down
+                    end try
+                  end if
+                end tell
+              end tell
+            `;
+          } else if (action === 'resize_window' || action === 'move_window') {
+            const parts: string[] = [];
+            if (x !== undefined && y !== undefined) {
+              parts.push(`set position of window 1 to {${parseInt(x, 10)}, ${parseInt(y, 10)}}`);
+            }
+            if (width !== undefined && height !== undefined) {
+              parts.push(`set size of window 1 to {${parseInt(width, 10)}, ${parseInt(height, 10)}}`);
+            }
+            script = `
+              tell application "System Events"
+                tell process "${cleanApp}"
+                  if (count of windows) > 0 then
+                    ${parts.join('\n                    ')}
+                  end if
+                end tell
+              end tell
+            `;
+          } else if (action === 'mouse_click' || action === 'mouse_double_click' || action === 'mouse_right_click') {
+            const coordX = x !== undefined ? parseInt(x, 10) : 0;
+            const coordY = y !== undefined ? parseInt(y, 10) : 0;
+            if (action === 'mouse_right_click') {
+              script = `tell application "System Events" to click at {${coordX}, ${coordY}} using control down`;
+            } else if (action === 'mouse_double_click') {
+              script = `
+                tell application "System Events"
+                  click at {${coordX}, ${coordY}}
+                  delay 0.1
+                  click at {${coordX}, ${coordY}}
+                end tell
+              `;
+            } else {
+              script = `tell application "System Events" to click at {${coordX}, ${coordY}}`;
+            }
+          } else if (action === 'mouse_scroll') {
+            const delta = parseInt(deltaY || '3', 10);
+            const keyCode = delta < 0 ? 125 : 126;
+            const steps = Math.min(Math.max(Math.abs(delta), 1), 10);
+            script = `
+              tell application "System Events"
+                repeat ${steps} times
+                  key code ${keyCode}
+                  delay 0.02
+                end repeat
+              end tell
+            `;
+          } else if (action === 'key_type') {
+            script = `
+              tell application "System Events"
+                tell process "${cleanApp}"
+                  set frontmost to true
+                  keystroke "${cleanText}"
+                end tell
+              end tell
+            `;
+          } else if (action === 'key_press') {
+            const keyCodes: Record<string, number> = {
+              'return': 36, 'enter': 36, 'tab': 48, 'space': 49,
+              'escape': 53, 'esc': 53, 'backspace': 51, 'delete': 51,
+              'left': 123, 'right': 124, 'down': 125, 'up': 126,
+            };
+            const code = keyCodes[(key || 'return').toLowerCase()] || 36;
+            script = `
+              tell application "System Events"
+                tell process "${cleanApp}"
+                  set frontmost to true
+                  key code ${code}
+                end tell
+              end tell
+            `;
+          } else if (action === 'key_shortcut') {
+            const mods = Array.isArray(modifiers) ? modifiers : ['cmd'];
+            const modClauses: string[] = [];
+            for (const m of mods) {
+              const lm = m.toLowerCase();
+              if (lm === 'cmd' || lm === 'command') modClauses.push('command down');
+              if (lm === 'shift') modClauses.push('shift down');
+              if (lm === 'alt' || lm === 'option') modClauses.push('option down');
+              if (lm === 'ctrl' || lm === 'control') modClauses.push('control down');
+            }
+            const modStr = modClauses.length > 0 ? `using {${modClauses.join(', ')}}` : '';
+            const cleanKey = (key || 'c').toLowerCase();
+            const actionStr = cleanKey === 'return' || cleanKey === 'enter'
+              ? `key code 36 ${modStr}`
+              : `keystroke "${cleanKey.charAt(0)}" ${modStr}`;
+            script = `
+              tell application "System Events"
+                tell process "${cleanApp}"
+                  set frontmost to true
+                  ${actionStr}
+                end tell
+              end tell
+            `;
+          } else if (action === 'set_volume') {
+            const vol = Math.min(Math.max(parseInt(volumeLevel ?? '50', 10), 0), 100);
+            script = `set volume output volume ${vol}`;
+          } else if (action === 'toggle_mute') {
+            script = `set volume output muted (not (output muted of (get volume settings)))`;
+          } else if (action === 'media_control') {
+            const mediaCmd = (text || 'playpause').toLowerCase();
+            if (mediaCmd === 'next') {
+              script = `try\ntell application "Music" to next track\non error\ntell application "Spotify" to next track\nend try`;
+            } else if (mediaCmd === 'previous' || mediaCmd === 'prev') {
+              script = `try\ntell application "Music" to previous track\non error\ntell application "Spotify" to previous track\nend try`;
+            } else {
+              script = `try\ntell application "Music" to playpause\non error\ntell application "Spotify" to playpause\nend try`;
+            }
+          }
+
+          if (!script) {
+            return jsonResponse(400, { success: false, error: `Unsupported control action: ${action}` });
+          }
+
+          execFile('/usr/bin/osascript', ['-e', script], (error, stdout) => {
+            return jsonResponse(200, {
+              success: !error,
+              action,
+              target: cleanApp,
+              output: error ? undefined : (stdout ? stdout.trim() : 'Control action executed successfully.'),
+              error: error ? error.message : undefined,
+            });
+          });
+          return;
+        }
+
+        // 10. GET /api/macos/computer-state
+        if (req.url === '/api/macos/computer-state' && req.method === 'GET') {
+          const stateScript = `
+            tell application "System Events"
+              try
+                set frontApp to first application process whose frontmost is true
+                set appName to name of frontApp
+                set winTitle to ""
+                try
+                  if (count of windows of frontApp) > 0 then
+                    set winTitle to name of front window of frontApp
+                  end if
+                end try
+                set appsList to name of every process whose background only is false
+                set AppleScript's text item delimiters to ", "
+                set appsJoined to appsList as text
+                set AppleScript's text item delimiters to ""
+                set vol to output volume of (get volume settings)
+                set muted to output muted of (get volume settings)
+                return appName & "|||" & winTitle & "|||" & appsJoined & "|||" & (vol as text) & "|||" & (muted as text)
+              on error
+                return "Finder||||||Finder|||50|||false"
+              end try
+            end tell
+          `;
+          execFile('/usr/bin/osascript', ['-e', stateScript], (err, stdout) => {
+            const raw = stdout ? stdout.trim() : 'Finder||||||Finder|||50|||false';
+            const parts = raw.split('|||');
+            return jsonResponse(200, {
+              activeApp: parts[0] || 'Finder',
+              activeWindow: parts[1] || '',
+              runningApps: (parts[2] || '').split(', ').filter(Boolean),
+              volume: parseInt(parts[3] || '50', 10),
+              isMuted: parts[4] === 'true',
+            });
+          });
+          return;
+        }
+
+        // 11. POST /api/macos/ui-tree
+        if (req.url === '/api/macos/ui-tree' && req.method === 'POST') {
+          const body = await parseBody();
+          const targetApp = body.targetApp ? sanitizeForAppleScript(body.targetApp) : null;
+          const appClause = targetApp
+            ? `application process "${targetApp}"`
+            : 'first application process whose frontmost is true';
+
+          const treeScript = `
+            tell application "System Events"
+              try
+                set targetProc to ${appClause}
+                set pName to name of targetProc
+                set wTitle to ""
+                if (count of windows of targetProc) > 0 then
+                  try
+                    set wTitle to name of front window of targetProc
+                  end try
+                end if
+                set elList to {}
+                try
+                  repeat with btn in (buttons of front window of targetProc)
+                    try
+                      set bName to name of btn
+                      set bDesc to description of btn
+                      set bPos to position of btn
+                      set bSize to size of btn
+                      set bEnabled to enabled of btn
+                      set end of elList to ("BUTTON|||" & bName & "|||" & bDesc & "|||" & (item 1 of bPos) & "|||" & (item 2 of bPos) & "|||" & (item 1 of bSize) & "|||" & (item 2 of bSize) & "|||" & bEnabled)
+                    end try
+                  end repeat
+                end try
+                try
+                  repeat with tf in (text fields of front window of targetProc)
+                    try
+                      set tVal to value of tf
+                      set tDesc to description of tf
+                      set tPos to position of tf
+                      set tSize to size of tf
+                      set tFocused to focused of tf
+                      set end of elList to ("TEXTFIELD|||" & (tVal as text) & "|||" & tDesc & "|||" & (item 1 of tPos) & "|||" & (item 2 of tPos) & "|||" & (item 1 of tSize) & "|||" & (item 2 of tSize) & "|||" & tFocused)
+                    end try
+                  end repeat
+                end try
+                set AppleScript's text item delimiters to "@@@"
+                set elementsJoined to elList as text
+                set AppleScript's text item delimiters to ""
+                return pName & ":::" & wTitle & ":::" & elementsJoined
+              on error errMsg
+                return "Finder:::Error:::ERROR|||" & errMsg
+              end try
+            end tell
+          `;
+          execFile('/usr/bin/osascript', ['-e', treeScript], (err, stdout) => {
+            const raw = stdout ? stdout.trim() : 'Finder::::::';
+            const parts = raw.split(':::');
+            const appName = parts[0] || 'Unknown';
+            const windowTitle = parts[1] || '';
+            const rawElements = parts[2] || '';
+            const elements: any[] = [];
+
+            if (rawElements && !rawElements.startsWith('ERROR|||')) {
+              for (const [idx, item] of rawElements.split('@@@').entries()) {
+                const fields = item.split('|||');
+                if (fields.length >= 8) {
+                  elements.push({
+                    id: `el_${fields[0].toLowerCase()}_${idx}`,
+                    role: fields[0],
+                    title: fields[1],
+                    description: fields[2] || undefined,
+                    value: fields[0] === 'TEXTFIELD' ? fields[1] : undefined,
+                    x: parseInt(fields[3], 10) || 0,
+                    y: parseInt(fields[4], 10) || 0,
+                    width: parseInt(fields[5], 10) || 0,
+                    height: parseInt(fields[6], 10) || 0,
+                    enabled: fields[7] === 'true',
+                    focused: fields[0] === 'TEXTFIELD' && fields[7] === 'true',
+                  });
+                }
+              }
+            }
+
+            return jsonResponse(200, {
+              appName,
+              windowTitle,
+              elements,
+              totalCount: elements.length,
+              error: rawElements.startsWith('ERROR|||') ? rawElements.replace('ERROR|||', '') : undefined,
+            });
+          });
+          return;
+        }
+
+        // 12. GET /api/macos/permissions
+        if (req.url === '/api/macos/permissions' && req.method === 'GET') {
+          execFile('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process'], (err) => {
+            const automationGranted = !err;
+            return jsonResponse(200, {
+              accessibilityGranted: automationGranted,
+              screenRecordingGranted: true,
+              automationGranted,
+              microphoneGranted: true,
+              message: automationGranted
+                ? 'All core macOS permissions are granted.'
+                : 'macOS Accessibility / Automation permission is required for System Events control.',
+              actionRequired: automationGranted
+                ? undefined
+                : 'Open System Settings > Privacy & Security > Accessibility and Automation, and enable Janki.',
             });
           });
           return;

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { PushToTalkButton } from './PushToTalkButton';
 import { PlanReviewCard } from '../approval/PlanReviewCard';
+import { ComputerStateHud } from './ComputerStateHud';
+import { PermissionDiagnosticBanner } from '../safety/PermissionDiagnosticBanner';
 import { useCommandStore } from '../../state/useCommandStore';
 import { useSafetyStore } from '../../state/useSafetyStore';
 import { PERSONA_PROFILES, PersonaType } from '../../core/persona-engine';
@@ -126,6 +128,12 @@ export const CommandCenterView: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* macOS Permissions Diagnostic Banner */}
+      <PermissionDiagnosticBanner />
+
+      {/* Autonomous Computer State & Verification HUD */}
+      <ComputerStateHud />
 
       {/* Dynamic Chameleon Persona & Emotional State Bar */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 space-y-2">
@@ -269,7 +277,59 @@ export const CommandCenterView: React.FC = () => {
             >
               <span>✨ "Spiritual guide"</span>
             </button>
+          </div>
 
+          {/* Phase 2: Autonomous Desktop Execution Test Simulations */}
+          <div className="mt-2.5 pt-2.5 border-t border-blue-900/30 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] text-cyan-400 font-mono font-semibold flex items-center gap-1 w-full">
+              <span>🖥️ Phase 2 Autonomous Mac Actions:</span>
+            </span>
+
+            <button
+              onClick={() => handleSimulateTest('Open Safari and search for Oksy Healthcare')}
+              className="bg-cyan-950/70 hover:bg-cyan-900/90 text-cyan-200 border border-cyan-700/60 text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <span>🌐 "Safari search: Oksy Healthcare"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Open Calculator and calculate 125 * 48')}
+              className="bg-amber-950/70 hover:bg-amber-900/90 text-amber-200 border border-amber-700/60 text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <span>🔢 "Calculator: 125 * 48"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Open TextEdit and type this message: Meeting at 3pm')}
+              className="bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <span>📝 "TextEdit: Type meeting note"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Safari തുറന്ന് Google ൽ Oksy Healthcare search ചെയ്യൂ')}
+              className="bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-200 border border-emerald-700/60 text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <span>🌴 "Google search (Malayalam)"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Safari open cheythitu Oksy Healthcare search cheyyu')}
+              className="bg-blue-950/70 hover:bg-blue-900/90 text-blue-200 border border-blue-700/60 text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <span>🗣️ "Search (Manglish)"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Set volume to 40')}
+              className="bg-indigo-950/70 hover:bg-indigo-900/90 text-indigo-200 border border-indigo-700/60 text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <Volume2 className="w-3 h-3 text-indigo-400" />
+              <span>"Set volume to 40"</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             {activeProposal && (
               <button
                 onClick={() => confirmProposal()}

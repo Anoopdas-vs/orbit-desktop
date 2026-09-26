@@ -13,6 +13,9 @@ const ALLOWED_APPS: &[&str] = &[
     "ChatGPT",
     "WhatsApp",
     "Telegram",
+    "Calculator",
+    "TextEdit",
+    "System Settings",
 ];
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -117,6 +120,9 @@ mod tests {
         assert!(ALLOWED_APPS.contains(&"Visual Studio Code"));
         assert!(ALLOWED_APPS.contains(&"Terminal"));
         assert!(ALLOWED_APPS.contains(&"Finder"));
+        assert!(ALLOWED_APPS.contains(&"Calculator"));
+        assert!(ALLOWED_APPS.contains(&"TextEdit"));
+        assert!(ALLOWED_APPS.contains(&"System Settings"));
     }
 
     #[test]

@@ -4,8 +4,10 @@
 mod commands;
 
 use commands::{
-    cmd_check_app, cmd_exec_command, cmd_gui_action, cmd_open_app, cmd_open_url, cmd_prompt_ai,
-    cmd_resolve_youtube, cmd_youtube_skip_ad,
+    cmd_check_app, cmd_check_permissions, cmd_control_action, cmd_exec_command,
+    cmd_get_computer_state, cmd_get_ui_tree, cmd_gui_action, cmd_open_app, cmd_open_url,
+    cmd_prompt_ai, cmd_resolve_youtube, cmd_youtube_skip_ad,
+    cmd_get_file_metadata, cmd_read_file, cmd_create_file, cmd_move_to_trash,
 };
 
 fn main() {
@@ -22,6 +24,14 @@ fn main() {
             cmd_prompt_ai,
             cmd_youtube_skip_ad,
             cmd_resolve_youtube,
+            cmd_control_action,
+            cmd_get_computer_state,
+            cmd_get_ui_tree,
+            cmd_check_permissions,
+            cmd_get_file_metadata,
+            cmd_read_file,
+            cmd_create_file,
+            cmd_move_to_trash,
         ])
         .run(tauri::generate_context!())
         .expect("error while running janki application");

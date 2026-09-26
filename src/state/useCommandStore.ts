@@ -22,6 +22,12 @@ import { moodIntelligence, MoodProfile } from '../skills/mood-intelligence';
 import { tradingAdvisoryDesk, TechnicalAdvisory } from '../skills/trading-advisory';
 import { autonomousReporter, GeneratedReport } from '../skills/autonomous-reporter';
 import { nativeBridge } from '../adapters/native/tauri-bridge';
+import { closedLoopExecutor } from '../core/execution-loop';
+import { skillRegistry } from '../skills';
+import { variableResolver } from '../core/workflow/variable-resolver';
+import { rollbackCoordinator } from '../core/workflow/rollback-coordinator';
+import { replanningEngine } from '../core/replanning-engine';
+import { useComputerStateStore } from './useComputerStateStore';
 import { useSafetyStore } from './useSafetyStore';
 import { useAuditStore } from './useAuditStore';
 
@@ -406,11 +412,68 @@ export const useCommandStore = create<CommandState>((set, get) => ({
     let result: any;
     const startTime = performance.now();
 
+    // 1. Resolve variable bindings from previous step outputs and context
+    const stepOutputs: Record<string, any> = {};
+    for (const a of currentPlan.actions) {
+      if (a.output !== undefined) {
+        stepOutputs[a.id] = {
+          output: a.output,
+          data: a.output?.data ?? a.output,
+          ...(typeof a.output === 'object' && a.output !== null ? a.output : {}),
+        };
+      }
+    }
+    const resolution = variableResolver.resolveStepParams(action.params || {}, {
+      steps: stepOutputs,
+      context: {
+        activeApp: safety.activeProjectId || 'Desktop',
+      },
+    });
+    const resolvedParams = resolution.resolvedParams;
+
     try {
-      if (action.skillId === 'youtube_launcher') {
+      if (action.skillId === 'computer_control') {
+        const skill = skillRegistry.getSkill('computer_control');
+        if (isDryRun) {
+          result = skill?.dryRun
+            ? await skill.dryRun(resolvedParams as any, executionContext)
+            : { success: true, stdout: '[DRY RUN] Would execute computer control' };
+        } else if (resolvedParams.verificationMethod || action.expectedEffect) {
+          const stepResult = await closedLoopExecutor.executeStepWithRecovery({
+            id: action.id,
+            stepNumber: 1,
+            title: action.title,
+            action: resolvedParams.action,
+            target: resolvedParams.target,
+            params: resolvedParams,
+            expectedResult: action.expectedEffect || resolvedParams.expectedResult || 'Action executed',
+            verificationMethod: resolvedParams.verificationMethod || 'command_success',
+            verificationCriteria: resolvedParams.verificationCriteria || {},
+            riskLevel: action.riskLevel,
+            timeoutMs: resolvedParams.timeoutMs || 8000,
+            retryLimit: resolvedParams.retryLimit ?? 1,
+          });
+
+          result = {
+            success: stepResult.verified,
+            data: stepResult,
+            stdout: stepResult.output,
+            error: stepResult.error,
+            durationMs: stepResult.durationMs,
+            message: stepResult.verified
+              ? `Verified: ${action.title}`
+              : `Verification failed: ${stepResult.error || 'Expected state not reached'}`,
+          };
+        } else {
+          result = await skillRegistry.dispatch('computer_control', resolvedParams, executionContext);
+        }
+      } else if (skillRegistry.hasSkill(action.skillId)) {
+        // Dispatches through unified SkillRegistry (browser_skill, files_skill, document_skill, office_skill, system_skill, media_skill, etc.)
+        result = await skillRegistry.dispatch(action.skillId, resolvedParams, executionContext);
+      } else if (action.skillId === 'youtube_launcher') {
         result = isDryRun
-          ? await youTubeLauncherSkill.dryRun!(action.params as any, executionContext)
-          : await youTubeLauncherSkill.execute(action.params as any, executionContext);
+          ? await youTubeLauncherSkill.dryRun!(resolvedParams as any, executionContext)
+          : await youTubeLauncherSkill.execute(resolvedParams as any, executionContext);
 
         if (result.data?.needsFallbackConfirmation) {
           const proposal = conversationalContext.getPendingProposal();
@@ -596,7 +659,7 @@ export const useCommandStore = create<CommandState>((set, get) => ({
                   ? {
                       ...a,
                       status: isDryRun ? 'DRY_RUN' : (result.success ? 'COMPLETED' : 'FAILED'),
-                      output: result.stdout || result.data,
+                      output: result.data !== undefined ? result.data : result.stdout,
                       error: result.error,
                       executionDurationMs: durationMs,
                     }
@@ -635,6 +698,24 @@ export const useCommandStore = create<CommandState>((set, get) => ({
     for (const action of currentPlan.actions) {
       if (action.status === 'PENDING_APPROVAL') {
         await get().approveAction(action.id, action.confirmationPhrase);
+        const updatedPlan = get().currentPlan;
+        const executedAction = updatedPlan?.actions.find((a) => a.id === action.id);
+        if (executedAction && executedAction.status === 'FAILED') {
+          const completedActions = updatedPlan!.actions.filter((a) => a.status === 'COMPLETED');
+          if (completedActions.length > 0) {
+            const rollbackRes = await rollbackCoordinator.rollback(
+              completedActions,
+              `Step "${executedAction.title}" failed: ${executedAction.error || 'Execution failure'}`
+            );
+            set({
+              assistantResponse: `Step "${executedAction.title}" failed. Compensating rollback initiated: ${rollbackRes.summary}`,
+            });
+            if (get().ttsEnabled) {
+              speechSynth.speak('Step execution failed. Compensating actions executed.');
+            }
+          }
+          break;
+        }
       }
     }
     set({ isExecuting: false });

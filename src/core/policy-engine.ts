@@ -35,7 +35,10 @@ export const DEFAULT_POLICY_CONFIG: SecurityPolicyConfig = {
     'Visual Studio Code',
     'Antigravity',
     'Claude Code',
-    'Cursor'
+    'Cursor',
+    'Calculator',
+    'TextEdit',
+    'System Settings'
   ],
   allowedDomains: [
     'github.com',
