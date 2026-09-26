@@ -12,7 +12,7 @@ import { SafetyCenterView } from './components/safety/SafetyCenterView';
 import { SettingsView } from './components/settings/SettingsView';
 import { PlanReviewCard } from './components/approval/PlanReviewCard';
 import { useCommandStore } from './state/useCommandStore';
-import { orbitDb } from './db/database';
+import { jankiDb } from './db/database';
 import { ShieldCheck } from 'lucide-react';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 
@@ -22,8 +22,8 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     // Initialize SQLite persistence on app mount
-    orbitDb.initialize().catch((err) => {
-      console.warn('Orbit SQLite initialization notice:', err);
+    jankiDb.initialize().catch((err) => {
+      console.warn('Janki SQLite initialization notice:', err);
     });
   }, []);
 
@@ -33,7 +33,7 @@ export const App: React.FC = () => {
         <DesktopFrame>
           <Sidebar currentView={currentView} onSelectView={setCurrentView} />
 
-          <main className="flex-1 flex flex-col min-w-0 bg-orbit-bg overflow-hidden relative">
+          <main className="flex-1 flex flex-col min-w-0 bg-janki-bg overflow-hidden relative">
             <KillSwitchBanner />
 
             {currentView === 'command' && <CommandCenterView />}

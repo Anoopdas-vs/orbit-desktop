@@ -209,6 +209,16 @@ export class BinanceTradingAdapter {
       journalEntry,
     };
   }
+
+  /**
+   * Technical Analysis & Trading Decision Advisory
+   */
+  public async getMarketAnalysis(symbol: string) {
+    const quote = await this.getPublicPrice(symbol);
+    const { tradingAdvisoryDesk } = await import('../../skills/trading-advisory');
+    return tradingAdvisoryDesk.evaluateMarket(quote.symbol, quote.price);
+  }
 }
 
 export const binanceTradingAdapter = new BinanceTradingAdapter();
+

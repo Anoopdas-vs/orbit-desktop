@@ -17,6 +17,11 @@ import { youtubeAdSkipperSkill, youtubeAdSkipperDaemon } from '../skills/youtube
 import { aiPromptAgentSkill } from '../skills/ai-prompt-agent';
 import { guiControllerSkill } from '../skills/gui-controller';
 import { appAvailabilitySkill } from '../skills/app-availability';
+import { personaEngine, PersonaProfile, PersonaType } from '../core/persona-engine';
+import { moodIntelligence, MoodProfile } from '../skills/mood-intelligence';
+import { tradingAdvisoryDesk, TechnicalAdvisory } from '../skills/trading-advisory';
+import { autonomousReporter, GeneratedReport } from '../skills/autonomous-reporter';
+import { nativeBridge } from '../adapters/native/tauri-bridge';
 import { useSafetyStore } from './useSafetyStore';
 import { useAuditStore } from './useAuditStore';
 
@@ -33,6 +38,10 @@ interface CommandState {
   wakeWordEnabled: boolean;
   ttsEnabled: boolean;
   activeProposal: PendingProposal | null;
+  activePersona: PersonaProfile;
+  activeMood: MoodProfile;
+  lastTradingAdvisory: TechnicalAdvisory | null;
+  lastReport: GeneratedReport | null;
 
   // Actions
   setInputText: (text: string) => void;
@@ -41,6 +50,7 @@ interface CommandState {
   toggleWakeWord: () => void;
   toggleTts: () => void;
   setVoiceProviderType: (type: 'web-speech' | 'mock') => void;
+  setPersona: (type: PersonaType) => void;
   startVoiceRecording: () => Promise<void>;
   stopVoiceRecording: () => Promise<void>;
   submitCommand: (overrideText?: string) => Promise<void>;
@@ -68,12 +78,28 @@ export const useCommandStore = create<CommandState>((set, get) => ({
   wakeWordEnabled: true,
   ttsEnabled: true,
   activeProposal: null,
+  activePersona: personaEngine.getPersona(),
+  activeMood: moodIntelligence.getCurrentMood(),
+  lastTradingAdvisory: null,
+  lastReport: null,
 
   setInputText: (text: string) => set({ inputText: text }),
 
   toggleDryRun: () => set((state) => ({ isDryRun: !state.isDryRun })),
 
   toggleFastMode: () => set((state) => ({ fastMode: !state.fastMode })),
+
+  setPersona: (type: PersonaType) => {
+    const profile = personaEngine.setPersona(type);
+    const greeting = personaEngine.getRandomGreeting(type);
+    set({
+      activePersona: profile,
+      assistantResponse: `${profile.icon} [${profile.name}] Active: ${greeting}`,
+    });
+    if (get().ttsEnabled) {
+      speechSynth.speak(greeting);
+    }
+  },
 
   toggleWakeWord: () => {
     const next = !get().wakeWordEnabled;
@@ -196,18 +222,9 @@ export const useCommandStore = create<CommandState>((set, get) => ({
         finalUrl = localResolution.targetUrl;
       } else {
         try {
-          if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
-            const res = await fetch('/api/macos/resolve-youtube', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query: musicQuery }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (data.targetUrl && data.isDirectVideo) {
-                finalUrl = data.targetUrl;
-              }
-            }
+          const res = await nativeBridge.resolveYouTube(musicQuery);
+          if (res && res.targetUrl && res.isDirectVideo) {
+            finalUrl = res.targetUrl;
           }
         } catch (err) {
           console.warn('Backend resolve-youtube failed:', err);
@@ -220,15 +237,9 @@ export const useCommandStore = create<CommandState>((set, get) => ({
       // 2. Attempt native macOS launch via bridge
       let openedViaBridge = false;
       try {
-        if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
-          const res = await fetch('/api/macos/open-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: finalUrl, browser: 'Google Chrome' }),
-          });
-          if (res.ok) {
-            openedViaBridge = true;
-          }
+        const res = await nativeBridge.openUrl(finalUrl, 'Google Chrome');
+        if (res && res.success) {
+          openedViaBridge = true;
         }
       } catch (err) {
         console.warn('Bridge open-url failed, falling back:', err);
@@ -477,6 +488,75 @@ export const useCommandStore = create<CommandState>((set, get) => ({
         result = isDryRun
           ? await appAvailabilitySkill.dryRun!(action.params as any, executionContext)
           : await appAvailabilitySkill.execute(action.params as any, executionContext);
+      } else if (action.skillId === 'persona_switch') {
+        const personaType = action.params.persona;
+        const profile = personaEngine.setPersona(personaType);
+        const greeting = action.params.greeting || personaEngine.getRandomGreeting(personaType);
+        set({ activePersona: profile });
+        result = {
+          success: true,
+          data: profile,
+          stdout: `${profile.icon} [${profile.name}] Active.\n${greeting}`,
+          message: greeting,
+          durationMs: 10,
+        };
+      } else if (action.skillId === 'mood_music') {
+        youtubeAdSkipperDaemon.startDaemon(500);
+        const directVideoId = action.params.directVideoId || 'jfKfPfyJRdk';
+        const finalUrl = `https://www.youtube.com/watch?v=${directVideoId}&autoplay=1`;
+        set({ activeMood: moodIntelligence.getCurrentMood() });
+
+        let openedViaBridge = false;
+        try {
+          const res = await nativeBridge.openUrl(finalUrl, 'Google Chrome');
+          if (res && res.success) openedViaBridge = true;
+        } catch {
+          // ignore
+        }
+        if (!openedViaBridge && typeof window !== 'undefined') {
+          try {
+            window.open(finalUrl, '_blank', 'noopener,noreferrer');
+          } catch {}
+        }
+        result = {
+          success: true,
+          stdout: `Playing mood track: "${action.params.trackTitle}" on YouTube with auto-skip ads.`,
+          message: `${action.params.empathyResponse} Now playing ${action.params.trackTitle}.`,
+          durationMs: 15,
+        };
+      } else if (action.skillId === 'trading_advisory') {
+        const symbol = action.params.symbol || 'BTCUSDT';
+        const advisory = await binanceTradingAdapter.getMarketAnalysis(symbol);
+        set({ lastTradingAdvisory: advisory });
+
+        if (action.params.openBinanceUrl && !isDryRun) {
+          try {
+            await nativeBridge.openUrl(
+              `https://www.binance.com/en/trade/${symbol.replace('USDT', '_USDT')}`,
+              'Google Chrome'
+            );
+          } catch {}
+        }
+
+        result = {
+          success: true,
+          data: advisory,
+          stdout: `[Binance Level Advisory] ${advisory.symbol}: $${advisory.currentPrice.toLocaleString()} | RSI: ${advisory.rsi14} | Signal: ${advisory.signal}\nVerdict: ${advisory.verdict}\n\n${advisory.spokenAdvisory}`,
+          message: advisory.spokenAdvisory,
+          durationMs: 25,
+        };
+      } else if (action.skillId === 'autonomous_reporter') {
+        const report = await autonomousReporter.generateReport(
+          action.params.topic || 'Strategic Analysis'
+        );
+        set({ lastReport: report });
+        result = {
+          success: true,
+          data: report,
+          stdout: `Report "${report.title}" created (${report.wordCount} words) using ${report.selectedTools.length} tools. Saved to ${report.savedFilePath}.`,
+          message: report.spokenSummary,
+          durationMs: 35,
+        };
       } else {
         result = {
           success: true,

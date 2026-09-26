@@ -14,11 +14,16 @@ import {
   Play,
   Terminal,
   Zap,
+  TrendingUp,
+  FileText,
+  Compass,
+  BookOpen,
 } from 'lucide-react';
 import { PushToTalkButton } from './PushToTalkButton';
 import { PlanReviewCard } from '../approval/PlanReviewCard';
 import { useCommandStore } from '../../state/useCommandStore';
 import { useSafetyStore } from '../../state/useSafetyStore';
+import { PERSONA_PROFILES, PersonaType } from '../../core/persona-engine';
 
 export const CommandCenterView: React.FC = () => {
   const {
@@ -38,12 +43,20 @@ export const CommandCenterView: React.FC = () => {
     confirmProposal,
     cancelProposal,
     initWakeWord,
+    activePersona,
+    activeMood,
+    lastTradingAdvisory,
+    lastReport,
+    setPersona,
   } = useCommandStore();
+
 
   const { tradingMode, killSwitchActive } = useSafetyStore();
   const [submitting, setSubmitting] = useState(false);
   const [customSongInput, setCustomSongInput] = useState('');
   const [proposalSongInput, setProposalSongInput] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+
 
   useEffect(() => {
     initWakeWord();
@@ -114,6 +127,48 @@ export const CommandCenterView: React.FC = () => {
         </div>
       </div>
 
+      {/* Dynamic Chameleon Persona & Emotional State Bar */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-semibold text-slate-300">Active Persona:</span>
+            <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5 bg-amber-950/60 border border-amber-800/80 px-2.5 py-1 rounded-md">
+              <span>{activePersona.icon}</span>
+              <span>{activePersona.name}</span>
+            </span>
+          </div>
+
+          {/* Persona switcher buttons */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(Object.keys(PERSONA_PROFILES) as PersonaType[]).map((key) => {
+              const p = PERSONA_PROFILES[key];
+              const isSelected = activePersona.type === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setPersona(key)}
+                  className={`text-[11px] px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-amber-600 text-white border-amber-400 font-bold shadow'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  <span>{p.icon}</span>
+                  <span>{p.name.split(' ')[0]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center justify-between text-[11px] text-slate-400">
+          <span className="italic">"{activePersona.tagline}"</span>
+          <span className="font-mono text-blue-300 bg-blue-950/40 border border-blue-800/50 px-2 py-0.5 rounded-full text-[10px]">
+            {activeMood.badge}
+          </span>
+        </div>
+      </div>
+
       {/* Hero Push-to-Talk Interactive Area */}
       <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute top-3 right-4 flex items-center space-x-2">
@@ -157,59 +212,27 @@ export const CommandCenterView: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => handleSimulateTest('Hey Janki, open youtube and play some music')}
+              onClick={() => handleSimulateTest('Play a song based on my mood')}
+              className="bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-200 border border-indigo-700/60 text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <Play className="w-3 h-3 text-indigo-400 fill-current" />
+              <span>🎵 "Play a song based on my mood"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Open Binance and advise me if this is the best time to trade')}
+              className="bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-200 border border-emerald-700/60 text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+              <span>📈 "Open Binance & advise trade timing"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Create a report on AI tools')}
               className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 border border-blue-700/60 text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
             >
-              <Play className="w-3 h-3 text-blue-400 fill-current" />
-              <span>1. "Hey Janki, open youtube and play some music"</span>
-            </button>
-
-            {activeProposal ? (
-              <button
-                onClick={() => confirmProposal()}
-                className="bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 border border-emerald-500 text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition shadow-md animate-pulse"
-              >
-                <Check className="w-3.5 h-3.5 text-emerald-300" />
-                <span>2. Say "Yes" (Open in Chrome Now)</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => handleSimulateTest('yes')}
-                className="bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 text-[11px] px-2.5 py-1.5 rounded-lg font-medium transition"
-              >
-                <span>Say "Yes"</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => handleSimulateTest('play Believer')}
-              className="bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-200 border border-indigo-700/60 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
-            >
-              <Play className="w-3 h-3 text-indigo-400 fill-current" />
-              <span>"Play Believer"</span>
-            </button>
-
-            <button
-              onClick={() => handleSimulateTest('play Shape of You')}
-              className="bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-200 border border-indigo-700/60 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
-            >
-              <Play className="w-3 h-3 text-indigo-400 fill-current" />
-              <span>"Play Shape of You"</span>
-            </button>
-
-            <button
-              onClick={() => handleSimulateTest('Open my web app project')}
-              className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-[11px] px-2.5 py-1.5 rounded-lg font-medium transition"
-            >
-              <span>"Open project"</span>
-            </button>
-
-            <button
-              onClick={() => handleSimulateTest('Ask ChatGPT what is the difference between TCP and UDP')}
-              className="bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-200 border border-emerald-700/60 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
-            >
-              <Sparkles className="w-3 h-3 text-emerald-400" />
-              <span>"Ask ChatGPT..."</span>
+              <FileText className="w-3.5 h-3.5 text-blue-400" />
+              <span>📑 "Create report on AI tools"</span>
             </button>
 
             <button
@@ -220,18 +243,42 @@ export const CommandCenterView: React.FC = () => {
             </button>
 
             <button
-              onClick={() => handleSimulateTest('Click button Submit')}
+              onClick={() => handleSimulateTest('Act as my mentor')}
               className="bg-purple-950/60 hover:bg-purple-900/80 text-purple-200 border border-purple-700/60 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
             >
-              <span>🖱️ "Click button Submit"</span>
+              <span>🎓 "Act as mentor"</span>
             </button>
 
             <button
-              onClick={() => handleSimulateTest('Janki, run tests')}
-              className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-[11px] px-2.5 py-1.5 rounded-lg font-medium transition"
+              onClick={() => handleSimulateTest('Act as a psychologist')}
+              className="bg-pink-950/60 hover:bg-pink-900/80 text-pink-200 border border-pink-700/60 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
             >
-              <span>"Run tests"</span>
+              <span>🧠 "Act as psychologist"</span>
             </button>
+
+            <button
+              onClick={() => handleSimulateTest('Talk to me as a father figure')}
+              className="bg-amber-950/60 hover:bg-amber-900/80 text-amber-200 border border-amber-700/60 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <span>🛡️ "Talk like father"</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateTest('Act as spiritual leader')}
+              className="bg-teal-950/60 hover:bg-teal-900/80 text-teal-200 border border-teal-700/60 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition shadow-sm"
+            >
+              <span>✨ "Spiritual guide"</span>
+            </button>
+
+            {activeProposal && (
+              <button
+                onClick={() => confirmProposal()}
+                className="bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 border border-emerald-500 text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition shadow-md animate-pulse"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Say "Yes" (Open in Chrome Now)</span>
+              </button>
+            )}
 
             {/* Custom Song Input */}
             <form
@@ -423,6 +470,112 @@ export const CommandCenterView: React.FC = () => {
             </button>
           </div>
           <PlanReviewCard plan={currentPlan} />
+        </div>
+      )}
+
+      {/* Binance Technical Analysis & Trade Timing Advisory Card */}
+      {lastTradingAdvisory && (
+        <div className="bg-gradient-to-r from-slate-900 to-emerald-950/40 border border-emerald-800/60 rounded-2xl p-5 space-y-3 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-900/40 pb-3">
+            <div className="flex items-center space-x-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-xs font-bold text-emerald-200 tracking-wider uppercase">
+                Binance Technical Level & Trade Advisory: {lastTradingAdvisory.symbol}
+              </h3>
+            </div>
+            <span
+              className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
+                lastTradingAdvisory.verdict === 'FAVORABLE_FOR_ENTRY'
+                  ? 'bg-emerald-900 text-emerald-200 border-emerald-500'
+                  : lastTradingAdvisory.verdict === 'UNFAVORABLE_WAIT'
+                  ? 'bg-amber-900 text-amber-200 border-amber-500'
+                  : 'bg-blue-900 text-blue-200 border-blue-500'
+              }`}
+            >
+              {lastTradingAdvisory.signal.replace(/_/g, ' ')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-mono">Current Price</span>
+              <span className="text-sm font-bold text-slate-100 font-mono">
+                ${lastTradingAdvisory.currentPrice.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-mono">RSI (14)</span>
+              <span className="text-sm font-bold text-emerald-400 font-mono">
+                {lastTradingAdvisory.rsi14} / 100
+              </span>
+            </div>
+            <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-mono">Key Support</span>
+              <span className="text-sm font-bold text-blue-400 font-mono">
+                ${lastTradingAdvisory.keySupport.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-mono">Key Resistance</span>
+              <span className="text-sm font-bold text-rose-400 font-mono">
+                ${lastTradingAdvisory.keyResistance.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/90 border border-emerald-900/40 rounded-xl p-3 text-xs text-emerald-100 leading-relaxed font-mono">
+            🗣️ {lastTradingAdvisory.spokenAdvisory}
+          </div>
+        </div>
+      )}
+
+      {/* Autonomous Report Card */}
+      {lastReport && (
+        <div className="bg-gradient-to-r from-slate-900 to-blue-950/40 border border-blue-800/60 rounded-2xl p-5 space-y-3 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-900/40 pb-3">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-4 h-4 text-blue-400" />
+              <h3 className="text-xs font-bold text-blue-200 tracking-wider uppercase">
+                {lastReport.title}
+              </h3>
+            </div>
+            <span className="text-[10px] bg-blue-950 text-blue-300 border border-blue-800 px-2.5 py-0.5 rounded-full font-mono">
+              {lastReport.wordCount} words | {lastReport.selectedTools.length} tools
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {lastReport.selectedTools.map((t) => (
+              <span
+                key={t.name}
+                className="text-[10px] bg-slate-950 text-slate-300 border border-slate-800 px-2 py-0.5 rounded-md font-mono"
+              >
+                🛠️ {t.name} ({t.category})
+              </span>
+            ))}
+          </div>
+
+          <div className="bg-slate-950/90 border border-blue-900/40 rounded-xl p-3 text-xs text-blue-100 leading-relaxed">
+            <div className="font-semibold text-slate-300 mb-1">Executive Summary:</div>
+            {lastReport.executiveSummary}
+          </div>
+
+          {/* Toggleable Full Markdown preview */}
+          <div className="pt-1">
+            <button
+              onClick={() => setShowReportModal(!showReportModal)}
+              className="text-xs text-blue-400 hover:text-blue-300 font-mono underline flex items-center gap-1"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>{showReportModal ? 'Collapse Full Report' : 'Read Full Compiled Report Document'}</span>
+            </button>
+
+            {showReportModal && (
+              <div className="mt-3 bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-slate-300 font-mono max-h-96 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                {lastReport.markdownContent}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

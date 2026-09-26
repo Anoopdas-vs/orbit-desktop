@@ -6,6 +6,10 @@ import { conversationalContext } from './conversational-context';
 import { resolvePlayableUrl } from '../skills/youtube-launcher';
 import { checkApplicationAvailability } from '../skills/app-availability';
 import { youtubeAdSkipperDaemon } from '../skills/youtube-ad-skipper';
+import { personaEngine } from './persona-engine';
+import { moodIntelligence } from '../skills/mood-intelligence';
+import { tradingAdvisoryDesk } from '../skills/trading-advisory';
+import { autonomousReporter } from '../skills/autonomous-reporter';
 
 export interface RouterContext {
   registeredProjects: { id: string; name: string; rootPath: string }[];
@@ -250,8 +254,141 @@ export class CommandRouter {
     const actions: ActionItem[] = [];
     let interpretedIntent = 'Unknown Command';
 
+    const personaDetected = personaEngine.detectPersonaRequest(effectivePrompt);
+    const isPersonaIntent =
+      personaDetected &&
+      (lower.includes('act as') ||
+        lower.includes('be my') ||
+        lower.includes('switch to') ||
+        lower.includes('mode') ||
+        lower.includes('talk like') ||
+        lower.includes('talk to me as') ||
+        lower.startsWith('become '));
+
+    // P0. Chameleon Persona Transition ("act as my spiritual leader", "be my mentor", etc.)
+    if (isPersonaIntent && personaDetected) {
+      const newProfile = personaEngine.setPersona(personaDetected);
+      interpretedIntent = `Switch Persona: ${newProfile.name}`;
+      const greeting = personaEngine.getRandomGreeting(personaDetected);
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'persona_switch',
+        title: `Engage ${newProfile.name}`,
+        description: `${newProfile.icon} ${newProfile.tagline}`,
+        riskLevel: 'LOW',
+        params: {
+          persona: personaDetected,
+          name: newProfile.name,
+          greeting,
+        },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: `Transitions Janki to ${newProfile.name} mode and emits spoken welcome`,
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P1. Autonomous Multi-Tool Report Generation ("create a report on...", "generate analysis on...")
+    else if (
+      lower.startsWith('create a report') ||
+      lower.startsWith('create report') ||
+      lower.startsWith('generate report') ||
+      lower.startsWith('generate a report') ||
+      lower.startsWith('make a report') ||
+      lower.includes('prepare a report') ||
+      lower.includes('create an analysis') ||
+      lower.includes('generate analysis')
+    ) {
+      const topic = effectivePrompt
+        .replace(/^(?:create|generate|make|prepare)\s+(?:a\s+|an\s+)?(?:report|analysis)\s+(?:on|about|for)?/i, '')
+        .trim() || 'Strategic Innovation & Market Execution';
+
+      interpretedIntent = `Generate Autonomous Report: ${topic.slice(0, 30)}`;
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'autonomous_reporter',
+        title: `Generate Report: "${topic.slice(0, 35)}"`,
+        description: 'Autonomously select research/analytics toolchain, synthesize data, and compile structured report.',
+        riskLevel: 'LOW',
+        params: { topic },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Compiles and saves comprehensive report to disk with voice summary',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P2. Mood Intelligence & Contextual Music ("play a song based on my mood", "i had a rough day play music")
+    else if (
+      lower.includes('mood') ||
+      (lower.includes('play') &&
+        (lower.includes('feeling') ||
+          lower.includes('tired') ||
+          lower.includes('stress') ||
+          lower.includes('rough day') ||
+          lower.includes('vibe') ||
+          lower.includes('exhausted')))
+    ) {
+      const moodProfile = moodIntelligence.analyzeMood(effectivePrompt);
+      interpretedIntent = `Play Mood Music (${moodProfile.label})`;
+
+      youtubeAdSkipperDaemon.startDaemon(1000);
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'mood_music',
+        title: `Mood Soundtrack: ${moodProfile.suggestedTrackTitle}`,
+        description: `${moodProfile.badge} | ${moodProfile.empathyResponse}`,
+        riskLevel: 'LOW',
+        params: {
+          mood: moodProfile.mood,
+          trackTitle: moodProfile.suggestedTrackTitle,
+          query: moodProfile.youtubeQuery,
+          directVideoId: moodProfile.directVideoId,
+          empathyResponse: moodProfile.empathyResponse,
+        },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Plays curated mood music on YouTube with auto-skip ads and voice empathy',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P3. Binance Technical Level Analysis & Trade Advisory ("open binance and advise me if i should trade")
+    else if (
+      (lower.includes('binance') &&
+        (lower.includes('trade') ||
+          lower.includes('advis') ||
+          lower.includes('level') ||
+          lower.includes('time') ||
+          lower.includes('should i') ||
+          lower.includes('good time') ||
+          lower.includes('best time'))) ||
+      lower.includes('should i trade') ||
+      lower.includes('is this the best time to trade') ||
+      lower.includes('best time to trade') ||
+      lower.includes('check btc levels')
+    ) {
+      const symbol = lower.includes('eth') ? 'ETHUSDT' : lower.includes('sol') ? 'SOLUSDT' : 'BTCUSDT';
+      interpretedIntent = `Binance Technical Trade Advisory (${symbol})`;
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'trading_advisory',
+        title: `Analyze ${symbol} & Advise Trade Entry`,
+        description: 'Fetch live market feed, compute RSI & 24h levels, determine if now is the best time to enter.',
+        riskLevel: 'LOW',
+        params: { symbol, openBinanceUrl: true },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Provides technical level breakdown, trade verdict, and opens Binance desk',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
     // A1. "skip ad", "skip youtube ad", "auto skip ads"
-    if (
+    else if (
       lower.includes('skip ad') ||
       lower.includes('skip youtube ad') ||
       lower.includes('skip ads') ||
