@@ -411,6 +411,8 @@ export class DynamicPlanner {
   private matchBrowserSearch(clean: string, raw: string, activeApp?: string): { browser: string; query: string } | null {
     const isSearch =
       clean.includes('search') ||
+      clean.includes('seach') ||
+      clean.includes('serach') ||
       clean.includes('തിരയൂ') ||
       clean.includes('google ൽ') ||
       clean.includes('googleil');
@@ -434,7 +436,7 @@ export class DynamicPlanner {
     }
 
     if (!query) {
-      const matchEn = raw.match(/(?:search\s+for|search)\s+(.+)$/i);
+      const matchEn = raw.match(/(?:search\s+for|search|seach\s+for|seach)\s+(.+)$/i);
       if (matchEn && matchEn[1]) {
         query = matchEn[1]
           .replace(/\b(?:in\s+safari|in\s+chrome|on\s+safari|on\s+chrome|please|search\s*cheyyu|cheyyu)\b/gi, '')
