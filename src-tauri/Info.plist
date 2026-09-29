@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Janki uses your microphone to capture voice commands and enable hands-free voice interaction.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Janki uses speech recognition to understand your spoken instructions and execute assistant commands.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Janki automates desktop tasks and controls applications via AppleEvents and System Events.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Janki captures your screen to analyze active windows and provide contextual AI assistance.</string>
+</dict>
+</plist>

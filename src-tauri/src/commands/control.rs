@@ -381,79 +381,234 @@ pub fn close_window(app_name: &str) -> ControlResult {
 }
 
 // -----------------------------------------------------------------------------
-// Mouse Controls
+// Mouse Controls (Native CoreGraphics on macOS)
 // -----------------------------------------------------------------------------
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CGPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[cfg(target_os = "macos")]
+type CGEventRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CGEventSourceRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFTypeRef = *const std::ffi::c_void;
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+#[link(name = "CoreFoundation", kind = "framework")]
+#[link(name = "ApplicationServices", kind = "framework")]
+extern "C" {
+    fn CGEventCreate(source: CGEventSourceRef) -> CGEventRef;
+    fn CGEventCreateMouseEvent(
+        source: CGEventSourceRef,
+        mouse_type: u32,
+        mouse_cursor_position: CGPoint,
+        mouse_button: u32,
+    ) -> CGEventRef;
+    fn CGEventPost(tap: u32, event: CGEventRef);
+    fn CGEventSetIntegerValueField(event: CGEventRef, field: u32, value: i64);
+    fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
+    fn CFRelease(cf: CFTypeRef);
+    fn AXIsProcessTrusted() -> bool;
+}
+
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGHIDEventTap: u32 = 0;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGEventLeftMouseDown: u32 = 1;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGEventLeftMouseUp: u32 = 2;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGEventRightMouseDown: u32 = 3;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGEventRightMouseUp: u32 = 4;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGEventMouseMoved: u32 = 5;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGMouseButtonLeft: u32 = 0;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGMouseButtonRight: u32 = 1;
+#[cfg(target_os = "macos")]
+#[allow(non_upper_case_globals)]
+const kCGMouseEventClickState: u32 = 1;
+
+#[cfg(target_os = "macos")]
+unsafe fn dispatch_single_click(
+    point: CGPoint,
+    down_type: u32,
+    up_type: u32,
+    mouse_btn: u32,
+    click_state: i64,
+) -> Result<(), &'static str> {
+    let down = CGEventCreateMouseEvent(std::ptr::null_mut(), down_type, point, mouse_btn);
+    if down.is_null() {
+        return Err("Failed to create mouse-down event via CGEventCreateMouseEvent");
+    }
+    CGEventSetIntegerValueField(down, kCGMouseEventClickState, click_state);
+    CGEventPost(kCGHIDEventTap, down);
+    CFRelease(down as _);
+
+    std::thread::sleep(std::time::Duration::from_millis(15));
+
+    let up = CGEventCreateMouseEvent(std::ptr::null_mut(), up_type, point, mouse_btn);
+    if up.is_null() {
+        return Err("Failed to create mouse-up event via CGEventCreateMouseEvent");
+    }
+    CGEventSetIntegerValueField(up, kCGMouseEventClickState, click_state);
+    CGEventPost(kCGHIDEventTap, up);
+    CFRelease(up as _);
+
+    Ok(())
+}
 
 pub fn mouse_click(x: Option<i32>, y: Option<i32>, button: Option<&str>, double_click: bool) -> ControlResult {
     let btn = button.unwrap_or("left");
-    let script = match (x, y) {
-        (Some(px), Some(py)) => {
-            if btn == "right" {
-                format!(
-                    r#"
-                    tell application "System Events"
-                      -- Right click at coordinates
-                      tell application "System Events" to click at {{{}, {}}} using control down
-                    end tell
-                    "#,
-                    px, py
-                )
-            } else if double_click {
-                format!(
-                    r#"
-                    tell application "System Events"
-                      click at {{{}, {}}}
-                      delay 0.1
-                      click at {{{}, {}}}
-                    end tell
-                    "#,
-                    px, py, px, py
-                )
-            } else {
-                format!(
-                    r#"
-                    tell application "System Events"
-                      click at {{{}, {}}}
-                    end tell
-                    "#,
-                    px, py
-                )
-            }
-        }
-        (None, None) => {
-            // Click at current cursor position
-            format!(
-                r#"
-                tell application "System Events"
-                  click
-                end tell
-                "#
-            )
-        }
-        _ => return ControlResult {
-            success: false,
-            action: "mouse_click".into(),
-            target: None,
-            output: None,
-            error: Some("Both x and y must be provided for coordinate clicks.".into()),
-        },
+    let action_name = if double_click {
+        "mouse_double_click"
+    } else if btn == "right" {
+        "mouse_right_click"
+    } else {
+        "mouse_click"
     };
 
-    match run_osascript(&script) {
-        Ok(_) => ControlResult {
+    #[cfg(target_os = "macos")]
+    {
+        let target_pt = match (x, y) {
+            (Some(px), Some(py)) => CGPoint {
+                x: px as f64,
+                y: py as f64,
+            },
+            (None, None) => {
+                unsafe {
+                    let ev = CGEventCreate(std::ptr::null_mut());
+                    if ev.is_null() {
+                        return ControlResult {
+                            success: false,
+                            action: action_name.into(),
+                            target: None,
+                            output: None,
+                            error: Some("Failed to retrieve current cursor position via CGEventCreate".into()),
+                        };
+                    }
+                    let pt = CGEventGetLocation(ev);
+                    CFRelease(ev as _);
+                    pt
+                }
+            }
+            _ => {
+                return ControlResult {
+                    success: false,
+                    action: action_name.into(),
+                    target: None,
+                    output: None,
+                    error: Some("Both x and y must be provided for coordinate clicks.".into()),
+                };
+            }
+        };
+
+        let is_trusted = unsafe { AXIsProcessTrusted() };
+        if !is_trusted {
+            return ControlResult {
+                success: false,
+                action: action_name.into(),
+                target: Some(format!("x:{}, y:{}, btn:{}", target_pt.x as i32, target_pt.y as i32, btn)),
+                output: None,
+                error: Some("macOS Accessibility permission is not granted. Synthetic CGEvent mouse events require Accessibility permission (System Settings > Privacy & Security > Accessibility).".into()),
+            };
+        }
+
+        let (down_type, up_type, mouse_btn) = if btn == "right" {
+            (kCGEventRightMouseDown, kCGEventRightMouseUp, kCGMouseButtonRight)
+        } else {
+            (kCGEventLeftMouseDown, kCGEventLeftMouseUp, kCGMouseButtonLeft)
+        };
+
+        unsafe {
+            // First move cursor to the target coordinate
+            let move_ev = CGEventCreateMouseEvent(std::ptr::null_mut(), kCGEventMouseMoved, target_pt, mouse_btn);
+            if !move_ev.is_null() {
+                CGEventPost(kCGHIDEventTap, move_ev);
+                CFRelease(move_ev as _);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+
+            if double_click {
+                if let Err(err) = dispatch_single_click(target_pt, down_type, up_type, mouse_btn, 1) {
+                    return ControlResult {
+                        success: false,
+                        action: action_name.into(),
+                        target: Some(format!("x:{}, y:{}, btn:{}", target_pt.x as i32, target_pt.y as i32, btn)),
+                        output: None,
+                        error: Some(err.into()),
+                    };
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(50));
+
+                if let Err(err) = dispatch_single_click(target_pt, down_type, up_type, mouse_btn, 2) {
+                    return ControlResult {
+                        success: false,
+                        action: action_name.into(),
+                        target: Some(format!("x:{}, y:{}, btn:{}", target_pt.x as i32, target_pt.y as i32, btn)),
+                        output: None,
+                        error: Some(err.into()),
+                    };
+                }
+            } else {
+                if let Err(err) = dispatch_single_click(target_pt, down_type, up_type, mouse_btn, 1) {
+                    return ControlResult {
+                        success: false,
+                        action: action_name.into(),
+                        target: Some(format!("x:{}, y:{}, btn:{}", target_pt.x as i32, target_pt.y as i32, btn)),
+                        output: None,
+                        error: Some(err.into()),
+                    };
+                }
+            }
+        }
+
+        ControlResult {
             success: true,
-            action: if double_click { "mouse_double_click".into() } else { "mouse_click".into() },
-            target: Some(format!("x:{:?}, y:{:?}, btn:{}", x, y, btn)),
-            output: Some("Mouse click performed.".into()),
+            action: action_name.into(),
+            target: Some(format!("x:{}, y:{}, btn:{}", target_pt.x as i32, target_pt.y as i32, btn)),
+            output: Some(format!("Native CoreGraphics {} performed at ({}, {}).", action_name, target_pt.x as i32, target_pt.y as i32)),
             error: None,
-        },
-        Err(e) => ControlResult {
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        if (x.is_some() && y.is_none()) || (x.is_none() && y.is_some()) {
+            return ControlResult {
+                success: false,
+                action: action_name.into(),
+                target: None,
+                output: None,
+                error: Some("Both x and y must be provided for coordinate clicks.".into()),
+            };
+        }
+
+        ControlResult {
             success: false,
-            action: "mouse_click".into(),
+            action: action_name.into(),
             target: Some(format!("x:{:?}, y:{:?}, btn:{}", x, y, btn)),
             output: None,
-            error: Some(e),
-        },
+            error: Some("Native coordinate mouse click is not supported on this platform yet (planned in Stage 1 cross-platform driver).".into()),
+        }
     }
 }
 
@@ -902,5 +1057,67 @@ mod tests {
         let clamped_low = (-20).clamp(0, 100);
         assert_eq!(clamped_high, 100);
         assert_eq!(clamped_low, 0);
+    }
+
+    #[test]
+    fn test_mouse_click_coordinate_validation() {
+        let res1 = mouse_click(Some(100), None, None, false);
+        assert!(!res1.success);
+        assert_eq!(
+            res1.error.as_deref(),
+            Some("Both x and y must be provided for coordinate clicks.")
+        );
+
+        let res2 = mouse_click(None, Some(200), None, false);
+        assert!(!res2.success);
+        assert_eq!(
+            res2.error.as_deref(),
+            Some("Both x and y must be provided for coordinate clicks.")
+        );
+    }
+
+    #[test]
+    fn test_mouse_click_permission_handling() {
+        let res = mouse_click(Some(150), Some(250), Some("left"), false);
+        assert_eq!(res.action, "mouse_click");
+        assert_eq!(res.target.as_deref(), Some("x:150, y:250, btn:left"));
+
+        #[cfg(target_os = "macos")]
+        {
+            let is_trusted = unsafe { AXIsProcessTrusted() };
+            if is_trusted {
+                assert!(res.success);
+                assert!(res.output.as_ref().unwrap().contains("Native CoreGraphics"));
+            } else {
+                assert!(!res.success);
+                assert!(res.error.as_ref().unwrap().contains("Accessibility permission"));
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_native_cgevent_location_and_allocation() {
+        unsafe {
+            let ev = CGEventCreate(std::ptr::null_mut());
+            assert!(!ev.is_null(), "CGEventCreate should allocate a valid CGEventRef");
+            let loc = CGEventGetLocation(ev);
+            CFRelease(ev as _);
+            assert!(!loc.x.is_nan());
+            assert!(!loc.y.is_nan());
+
+            let test_pt = CGPoint { x: 300.0, y: 400.0 };
+            let mouse_ev = CGEventCreateMouseEvent(
+                std::ptr::null_mut(),
+                kCGEventLeftMouseDown,
+                test_pt,
+                kCGMouseButtonLeft,
+            );
+            assert!(!mouse_ev.is_null(), "CGEventCreateMouseEvent should create a valid event");
+            let loc_created = CGEventGetLocation(mouse_ev);
+            assert_eq!(loc_created.x, 300.0);
+            assert_eq!(loc_created.y, 400.0);
+            CFRelease(mouse_ev as _);
+        }
     }
 }
