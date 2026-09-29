@@ -133,9 +133,55 @@ In adherence to strict stage separation guidelines, the following Stage 2+ featu
 
 ---
 
+## Task 1A — Development Startup Permission Fix
+
+### 1. Root Cause
+When launching via `npm run tauri dev`, Tauri executes `cargo run` which compiles and runs an unbundled Mach-O executable (`target/debug/janki`). On application mount, `CommandCenterView.tsx` triggered `initWakeWord()`, which automatically started continuous speech recognition (`wakeWordListener.start()`) because `wakeWordEnabled` defaulted to `true`.
+
+In WKWebView on macOS, `webkitSpeechRecognition.start()` invokes the macOS `Speech.framework`, which prompts the user for Speech Recognition permission via `tccd`. When the user approved the dialog ("OK"), macOS TCC checked the process for an `Info.plist` containing `NSSpeechRecognitionUsageDescription`. Because `bundle.macOS.infoPlist` in `tauri.conf.json` only injects `Info.plist` during packaged `.app` bundle builds (`tauri build`), the development binary lacked `Info.plist` metadata. macOS TCC treated this missing description as an illegal privacy violation and terminated the process with `SIGABRT` (`__TCC_CRASHING_DUE_TO_PRIVACY_VIOLATION__`), crashing Janki immediately upon startup.
+
+### 2. Solutions Implemented
+1. **Embedded Info.plist in Mach-O Binary (`src-tauri/build.rs`):**
+   Configured a custom build script that passes Apple linker arguments on macOS:
+   ```rust
+   fn main() {
+       #[cfg(target_os = "macos")]
+       {
+           let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+           println!(
+               "cargo:rustc-link-arg=-Wl,-sectcreate,__TEXT,__info_plist,{}/Info.plist",
+               manifest_dir
+           );
+       }
+       tauri_build::build();
+   }
+   ```
+   This physically embeds `src-tauri/Info.plist` directly into the `__TEXT,__info_plist` section of `target/debug/janki`, allowing `[NSBundle mainBundle]` and macOS TCC to resolve all `NS*UsageDescription` keys in unbundled development runs.
+
+2. **Safe Opt-In Wake Word Initialization (`src/state/useCommandStore.ts`):**
+   Updated `wakeWordEnabled` initial state from `true` to `false`. Voice and wake-word listeners no longer automatically invoke microphone/speech APIs on startup, preventing unexpected modal prompts during bootstrap while keeping the wake-word listener fully available via explicit UI toggle.
+
+### 3. Tests Executed & Results
+- **Rust Unit Tests (`cargo test`):** 18 passed, 0 failed, finished in 0.30s.
+- **TypeScript Unit Tests (`npm run test:run`):** 51 test files passed, 371 tests passed, finished in 15.83s.
+- **Frontend Production Build (`npm run build`):** Succeeded with 0 errors (`tsc && vite build`).
+- **Binary Section Verification (`otool -l target/debug/janki`):** Confirmed presence of `sectname __info_plist`, `segname __TEXT`, containing full XML plist with `NSSpeechRecognitionUsageDescription`.
+
+### 4. Development Startup Result (`npm run tauri dev`)
+- **Desktop Window:** `Janki Assistant` window opens and displays normally.
+- **Permission Flow:** Janki does NOT trigger any unprompted Speech Recognition or microphone dialogs on launch.
+- **Process Stability:** The Rust process remains running stably (PID active, zero crashes).
+- **Crash Elimination:** Zero `SIGABRT` / TCC aborts in `~/Library/Logs/DiagnosticReports/`.
+
+### 5. Remaining Limitations
+- Web Speech API in WKWebView uses Apple Dictation / Cloud STT under the hood. Per the project roadmap, native Malayalam and offline voice streaming will replace Web Speech with native Rust `cpal` + local acoustic wake-word engine in Stage 3.
+
+---
+
 ## G. Recommendation for Next Stage 1 Task
 
 **Proceed to Stage 1 Task 2: OS Driver Abstraction & Dynamic App Launcher**
 1. Implement the Rust `OsDriver` trait to separate platform-specific automation into dedicated `macos.rs` and `windows.rs` modules.
 2. Replace the static 25-app allowlist in `src-tauri/src/commands/app_launch.rs` with dynamic system application discovery (`NSWorkspace` on macOS and Registry/Start Menu on Windows).
 3. Remove the redundant `src/server/macos-bridge-plugin.ts` dev middleware.
+

@@ -81,7 +81,7 @@ export const useCommandStore = create<CommandState>((set, get) => ({
   assistantResponse: null,
   isExecuting: false,
   voiceProviderType: 'web-speech',
-  wakeWordEnabled: true,
+  wakeWordEnabled: false,
   ttsEnabled: true,
   activeProposal: null,
   activePersona: personaEngine.getPersona(),
