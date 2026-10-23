@@ -75,7 +75,17 @@ export class SpeechSynthesisEngine {
     return this.isSpeakingNow;
   }
 
-  public speak(text: string): Promise<void> {
+  public getMalayalamVoice(): SpeechSynthesisVoice | null {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+    const voices = window.speechSynthesis.getVoices();
+    return (
+      voices.find((v) => v.lang === 'ml-IN' || v.lang.startsWith('ml')) ||
+      voices.find((v) => v.name.toLowerCase().includes('lekha') || v.name.toLowerCase().includes('kalyani')) ||
+      null
+    );
+  }
+
+  public speak(text: string, lang?: string): Promise<void> {
     return new Promise((resolve) => {
       if (this.isMuted || typeof window === 'undefined' || !('speechSynthesis' in window)) {
         resolve();
@@ -97,12 +107,29 @@ export class SpeechSynthesisEngine {
         return;
       }
 
+      const isMalayalam = lang === 'ml' || lang === 'ml-IN' || /[\u0D00-\u0D7F]/.test(cleanText);
       const utterance = new SpeechSynthesisUtterance(cleanText);
-      if (this.selectedVoice) {
-        utterance.voice = this.selectedVoice;
+
+      if (isMalayalam) {
+        const mlVoice = this.getMalayalamVoice();
+        if (mlVoice) {
+          utterance.voice = mlVoice;
+        } else if (this.selectedVoice) {
+          utterance.voice = this.selectedVoice;
+        }
+        utterance.lang = 'ml-IN';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+      } else {
+        if (this.selectedVoice) {
+          utterance.voice = this.selectedVoice;
+        }
+        if (lang) {
+          utterance.lang = lang;
+        }
+        utterance.rate = 1.05; // slightly brisk and natural
+        utterance.pitch = 1.08; // slightly higher pitch for young female tone
       }
-      utterance.rate = 1.05; // slightly brisk and natural
-      utterance.pitch = 1.08; // slightly higher pitch for young female tone
 
       utterance.onend = () => {
         this.isSpeakingNow = false;

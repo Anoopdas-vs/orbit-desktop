@@ -7,3 +7,4 @@ export * from './document/document-skill';
 export * from './office/office-skill';
 export * from './system/system-skill';
 export * from './media/media-skill';
+export * from './screen/screen-skill';

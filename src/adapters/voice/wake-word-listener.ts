@@ -3,6 +3,8 @@
  * Continuous background listening using the Web Speech Recognition API.
  */
 
+import { speechSynthesisEngine } from './speech-synthesis';
+
 export interface WakeWordEvent {
   wakeWord: string;
   hasTrailingCommand: boolean;
@@ -123,6 +125,13 @@ export class WakeWordListener {
 
   public getIsActive(): boolean {
     return this.isListening;
+  }
+
+  /**
+   * Interrupt ongoing speech synthesis or long task when user interrupts.
+   */
+  public interrupt(): void {
+    speechSynthesisEngine.stop();
   }
 }
 

@@ -18,6 +18,17 @@ const ALLOWED_APPS = [
   'Calculator',
   'TextEdit',
   'System Settings',
+  'WPS Office',
+  'WPS',
+  'Preview',
+  'Pages',
+  'Numbers',
+  'Keynote',
+  'Adobe Acrobat',
+  'Acrobat Reader',
+  'Notes',
+  'Mail',
+  'Calendar',
 ];
 
 const ALLOWED_COMMAND_PREFIXES = [

@@ -99,6 +99,24 @@ export class VoiceAnnouncer {
   }
 
   /**
+   * Announce long-task progress updates naturally without exposing technical internals.
+   */
+  public async announceProgress(step: 'searching' | 'analyzing' | 'comparing' | 'saving' | 'done', lang?: string): Promise<boolean> {
+    const isMalayalam = lang === 'ml' || lang === 'ml-IN';
+    const phrases: Record<string, { en: string; ml: string }> = {
+      searching: { en: 'Searching...', ml: 'തിരയുന്നു...' },
+      analyzing: { en: 'Analyzing visible content...', ml: 'വിവരങ്ങൾ പരിശോധിക്കുന്നു...' },
+      comparing: { en: 'Comparing results...', ml: 'ഫലങ്ങൾ താരതമ്യം ചെയ്യുന്നു...' },
+      saving: { en: 'Saving the report...', ml: 'റിപ്പോർട്ട് സേവ് ചെയ്യുന്നു...' },
+      done: { en: 'Done.', ml: 'പൂർത്തിയായി.' },
+    };
+
+    const target = phrases[step] || { en: 'Working...', ml: 'പ്രവർത്തിക്കുന്നു...' };
+    const text = isMalayalam ? target.ml : target.en;
+    return this.announce(text, { priority: 'normal', minThrottleMs: 1000 });
+  }
+
+  /**
    * Immediately stops any ongoing speech (barge-in).
    */
   public cancel(): void {

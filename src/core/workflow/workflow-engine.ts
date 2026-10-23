@@ -17,6 +17,7 @@ import { replanningEngine } from '../replanning-engine';
 import { rollbackCoordinator } from './rollback-coordinator';
 import { taskContextManager } from '../../context/task-context-manager';
 import { useAuditStore } from '../../state/useAuditStore';
+import { checkpointManager } from './checkpoint-manager';
 
 export interface WorkflowExecutionOptions {
   isDryRun?: boolean;
@@ -399,6 +400,9 @@ export class WorkflowEngine {
           stepTitle: step.title,
         });
 
+        // Save progress checkpoint
+        checkpointManager.saveCheckpoint(workflow, this.stepRecords, 'RUNNING');
+
         // Advance to next step
         workflow.currentStepIndex++;
       } else {
@@ -490,6 +494,7 @@ export class WorkflowEngine {
 
     // Workflow Completed Successfully!
     workflow.status = 'COMPLETED';
+    checkpointManager.saveCheckpoint(workflow, this.stepRecords, 'SUCCESS');
     this.emitMilestone('WORKFLOW_COMPLETED', {
       totalSteps: workflow.steps.length,
     });
@@ -514,6 +519,7 @@ export class WorkflowEngine {
     startTime: number
   ): Promise<WorkflowExecutionResult> {
     workflow.status = 'FAILED';
+    checkpointManager.saveCheckpoint(workflow, this.stepRecords, 'FAILED', undefined, error, true);
     this.emitMilestone('WORKFLOW_FAILED', { error });
 
     // Execute compensating rollback for all previously completed steps

@@ -17,6 +17,10 @@ const SENSITIVE_PATTERNS = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g,
   // Environment variable lines with secrets (e.g. DATABASE_URL=postgres://..., SECRET=...)
   /^[A-Z0-9_]*(?:SECRET|KEY|PASSWORD|TOKEN|DATABASE_URL|AUTH)[A-Z0-9_]*\s*=\s*(.+)$/gim,
+  // Google / OAuth tokens (ya29., refresh tokens, client secrets)
+  /ya29\.[a-zA-Z0-9_\-]{20,}/g,
+  /(?:1\/\/[a-zA-Z0-9_\-]{40,})/g,
+  /GOCSPX-[a-zA-Z0-9_\-]{28}/g,
 ];
 
 export function redactSensitiveData(input: string): { redactedText: string; hasRedactions: boolean } {
@@ -28,18 +32,20 @@ export function redactSensitiveData(input: string): { redactedText: string; hasR
   let hasRedactions = false;
 
   for (const pattern of SENSITIVE_PATTERNS) {
-    if (pattern.test(text)) {
+    pattern.lastIndex = 0;
+    const replaced = text.replace(pattern, (match, ...args) => {
       hasRedactions = true;
-      text = text.replace(pattern, (match, p1) => {
-        if (match.includes('PRIVATE KEY')) {
-          return '-----BEGIN PRIVATE KEY-----\n[REDACTED_PRIVATE_KEY]\n-----END PRIVATE KEY-----';
-        }
-        if (p1) {
-          return match.replace(p1, '[REDACTED_SECRET]');
-        }
-        return '[REDACTED_SECRET]';
-      });
-    }
+      if (match.includes('PRIVATE KEY')) {
+        return '-----BEGIN PRIVATE KEY-----\n[REDACTED_PRIVATE_KEY]\n-----END PRIVATE KEY-----';
+      }
+      const p1 = typeof args[0] === 'string' ? args[0] : undefined;
+      if (p1) {
+        return match.replace(p1, '[REDACTED_SECRET]');
+      }
+      return '[REDACTED_SECRET]';
+    });
+    text = replaced;
+    pattern.lastIndex = 0;
   }
 
   return { redactedText: text, hasRedactions };

@@ -8,6 +8,7 @@ use commands::{
     cmd_get_computer_state, cmd_get_ui_tree, cmd_gui_action, cmd_open_app, cmd_open_url,
     cmd_prompt_ai, cmd_resolve_youtube, cmd_youtube_skip_ad,
     cmd_get_file_metadata, cmd_read_file, cmd_create_file, cmd_move_to_trash,
+    cmd_capture_screen,
 };
 
 fn main() {
@@ -32,6 +33,7 @@ fn main() {
             cmd_read_file,
             cmd_create_file,
             cmd_move_to_trash,
+            cmd_capture_screen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running janki application");

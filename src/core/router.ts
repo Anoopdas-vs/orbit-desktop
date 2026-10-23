@@ -13,6 +13,7 @@ import { actionPlanner } from './action-planner';
 import { contextualIntentResolver } from './contextual-intent-resolver';
 import { dynamicPlanner } from './dynamic-planner';
 import { taskContextManager } from '../context/task-context-manager';
+import { knowledgeRouter } from './knowledge-router';
 
 export interface RouterContext {
   registeredProjects: { id: string; name: string; rootPath: string }[];
@@ -394,6 +395,316 @@ export class CommandRouter {
       });
     }
 
+    // P3.4. Phase 6: Document / PDF / Screen Inspection Workflow
+    // e.g. "open WPS from my computer and check a policy number is on the already opened PDF give me the policy number"
+    // e.g. "check policy number on the already opened PDF", "find policy number on screen"
+    else if (
+      (lower.includes('policy number') || lower.includes('policy') || lower.includes('invoice number') || lower.includes('opened pdf') || lower.includes('opened document') || (lower.includes('wps') && (lower.includes('check') || lower.includes('pdf') || lower.includes('policy')))) &&
+      (lower.includes('wps') || lower.includes('pdf') || lower.includes('check') || lower.includes('find') || lower.includes('locate') || lower.includes('give me') || lower.includes('inspect'))
+    ) {
+      const wantsWps = lower.includes('wps');
+      const wantsPreview = lower.includes('preview');
+      const wantsAcrobat = lower.includes('acrobat');
+      const appName = wantsWps ? 'WPS Office' : wantsPreview ? 'Preview' : wantsAcrobat ? 'Adobe Acrobat' : undefined;
+      const queryText = lower.includes('policy') ? 'policy number' : lower.includes('invoice') ? 'invoice number' : 'document number';
+
+      interpretedIntent = appName
+        ? `Open ${appName} & Inspect Document for ${queryText}`
+        : `Inspect Document / Screen for ${queryText}`;
+
+      if (appName) {
+        actions.push({
+          id: crypto.randomUUID(),
+          skillId: 'open_application',
+          title: `Activate / Open ${appName}`,
+          description: `Bring ${appName} to the foreground to inspect the open document`,
+          riskLevel: 'LOW',
+          params: { appName },
+          status: 'PENDING_APPROVAL',
+          expectedEffect: `Brings ${appName} to active focus on macOS`,
+          requiresTypedConfirmation: false,
+          dryRunSupported: true,
+        });
+      }
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'screen_skill',
+        title: `Locate ${queryText} on Screen / PDF`,
+        description: `Inspect active application window for ${queryText} and extract matching text`,
+        riskLevel: 'LOW',
+        params: {
+          action: 'find_text_on_screen',
+          queryText,
+        },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: `Scans document content and returns visible ${queryText}`,
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P3.5. Phase 6: Multimodal Screen / Vision Understanding ("What is on my screen?", "Find invoice number on screen")
+    else if (
+      lower.includes('on my screen') ||
+      lower.includes('on screen') ||
+      lower.includes('what is showing') ||
+      lower.includes('what am i looking at') ||
+      (lower.includes('find') && (lower.includes('invoice') || lower.includes('number')) && (lower.includes('screen') || lower.includes('here'))) ||
+      lower.includes('inspect screen')
+    ) {
+      const isFindingText = lower.includes('find') || lower.includes('locate') || lower.includes('invoice');
+      const action = isFindingText ? 'find_text_on_screen' : 'explain_screen';
+      const queryText = isFindingText
+        ? (lower.match(/(?:find|locate)\s+(?:the\s+)?([a-zA-Z0-9\s_-]+?)(?:\s+on|\s+in|$)/i)?.[1] || 'invoice number').trim()
+        : undefined;
+
+      interpretedIntent = isFindingText ? `Find On-Screen: ${queryText}` : 'Multimodal Screen Inspection';
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'screen_skill',
+        title: isFindingText ? `Locate "${queryText}" on Screen` : 'Inspect & Explain Screen Content',
+        description: 'Observe active desktop windows, parse UI controls, and analyze visual elements',
+        riskLevel: 'LOW',
+        params: {
+          action,
+          queryText,
+        },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Captures and explains active desktop application and visible controls',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P4. Phase 5: Hybrid Multi-Step Workflow ("Search the web and save the result into a file")
+    else if (
+      (lower.includes('search') || lower.includes('research')) &&
+      (lower.includes('save') || lower.includes('write to a file') || lower.includes('save into a file') || lower.includes('save to file'))
+    ) {
+      const classification = knowledgeRouter.classify(effectivePrompt);
+      interpretedIntent = classification.interpretedIntent;
+      const query = classification.extractedQuery || 'latest technology updates';
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'web_search',
+        title: `Search Web: "${query.slice(0, 30)}"`,
+        description: 'Query live web and collect recent factual intelligence',
+        riskLevel: 'LOW',
+        params: { query, maxResults: 5 },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Retrieves relevant factual search records',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'file_workflow',
+        title: 'Save Research Summary to File',
+        description: 'Save synthesized research report to ~/Downloads/research_summary.md',
+        riskLevel: 'LOW',
+        params: {
+          action: 'save_research_summary',
+          filePath: '~/Downloads/research_summary.md',
+          content: '{{steps.step_1.output.summary}}',
+        },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Writes research findings to markdown file',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P5. Phase 5: External Application Workflow (Email, Calendar)
+    else if (
+      (lower.includes('email') || lower.includes('gmail') || lower.includes('inbox') || lower.includes('mail from')) &&
+      !lower.startsWith('open safari')
+    ) {
+      const classification = knowledgeRouter.classify(effectivePrompt);
+      interpretedIntent = classification.interpretedIntent;
+
+      if (lower.startsWith('send ') || lower.includes('send this email') || lower.includes('send email to')) {
+        const toMatch = lower.match(/(?:to\s+)([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        const to = toMatch ? toMatch[1] : 'recipient@example.com';
+        interpretedIntent = `Send Email to ${to}`;
+
+        actions.push({
+          id: crypto.randomUUID(),
+          skillId: 'email_workflow',
+          title: `Send Email to ${to}`,
+          description: `Dispatch email to ${to} (Requires User Approval)`,
+          riskLevel: 'HIGH',
+          params: { action: 'send_email', to, subject: 'Update from Janki Assistant', body: 'Drafted via Janki Assistant.' },
+          status: 'PENDING_APPROVAL',
+          expectedEffect: `Dispatches email to ${to} upon explicit confirmation`,
+          requiresTypedConfirmation: true,
+          dryRunSupported: true,
+        });
+      } else if (lower.includes('summarize') || lower.includes('from ')) {
+        const fromMatch = lower.match(/(?:from)\s+([a-zA-Z0-9@._-]+)/i);
+        const filter = fromMatch ? fromMatch[1] : undefined;
+        actions.push({
+          id: crypto.randomUUID(),
+          skillId: 'email_workflow',
+          title: `Summarize Email${filter ? ` from ${filter}` : ''}`,
+          description: `Retrieve and summarize email from ${filter || 'recent inbox'}`,
+          riskLevel: 'LOW',
+          params: { action: 'summarize_email', filter },
+          status: 'PENDING_APPROVAL',
+          expectedEffect: 'Reads and summarizes targeted email message',
+          requiresTypedConfirmation: false,
+          dryRunSupported: true,
+        });
+      } else {
+        actions.push({
+          id: crypto.randomUUID(),
+          skillId: 'email_workflow',
+          title: 'Check Recent Emails',
+          description: 'Fetch recent inbox messages and unread notices',
+          riskLevel: 'LOW',
+          params: { action: 'list_emails' },
+          status: 'PENDING_APPROVAL',
+          expectedEffect: 'Lists recent emails from inbox',
+          requiresTypedConfirmation: false,
+          dryRunSupported: true,
+        });
+      }
+    }
+
+    // P5.5. Phase 6: Calendar Queries ("What meetings do I have today?", "Schedule meeting")
+    else if (
+      lower.includes('meeting') ||
+      lower.includes('calendar') ||
+      lower.includes('schedule') ||
+      lower.includes('appointments')
+    ) {
+      interpretedIntent = 'Calendar Schedule Management';
+      const isCreate = lower.startsWith('schedule') || lower.startsWith('create meeting') || lower.startsWith('book ');
+
+      if (isCreate) {
+        const titleMatch = effectivePrompt.replace(/^(?:schedule|create meeting|book)\s+/i, '').trim();
+        actions.push({
+          id: crypto.randomUUID(),
+          skillId: 'calendar_workflow',
+          title: `Schedule Meeting: "${titleMatch.slice(0, 30)}"`,
+          description: 'Create new calendar event in Google Calendar',
+          riskLevel: 'MEDIUM',
+          params: { action: 'create_event', title: titleMatch || 'New Meeting' },
+          status: 'PENDING_APPROVAL',
+          expectedEffect: 'Adds event to calendar',
+          requiresTypedConfirmation: false,
+          dryRunSupported: true,
+        });
+      } else {
+        actions.push({
+          id: crypto.randomUUID(),
+          skillId: 'calendar_workflow',
+          title: "Check Today's Schedule",
+          description: 'Fetch events and meetings from calendar',
+          riskLevel: 'LOW',
+          params: { action: 'list_events' },
+          status: 'PENDING_APPROVAL',
+          expectedEffect: 'Retrieves calendar events',
+          requiresTypedConfirmation: false,
+          dryRunSupported: true,
+        });
+      }
+    }
+
+    // P6. Phase 5: Google / Browser Research ("Search Google for the latest GST changes and explain them")
+    else if (
+      lower.includes('search google') ||
+      lower.includes('google search') ||
+      lower.includes('search in google') ||
+      (lower.includes('search') && lower.includes('and explain')) ||
+      (lower.includes('search') && lower.includes('and tell me'))
+    ) {
+      const classification = knowledgeRouter.classify(effectivePrompt);
+      interpretedIntent = classification.interpretedIntent;
+      const query = classification.extractedQuery || 'current updates';
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'browser_research',
+        title: `Google Research: "${query.slice(0, 30)}"`,
+        description: `Execute Google search in Safari and synthesize findings`,
+        riskLevel: 'LOW',
+        params: { query, browser: 'Safari', searchEngine: 'google' },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Performs controlled browser research and extracts page findings',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P6.5. Phase 6: Long-Term Memory Retrieval ("Remind me what I usually use this app for", "What are my preferences")
+    else if (
+      lower.includes('remind me what i usually use') ||
+      lower.includes('what do i use this for') ||
+      lower.includes('what are my preferences') ||
+      lower.includes('remember what') ||
+      lower.includes('what did i decide')
+    ) {
+      interpretedIntent = 'Retrieve Long-Term Memory';
+      const targetApp = lower.match(/(?:for|use)\s+([a-zA-Z0-9\s_-]+)$/i)?.[1]?.trim() || 'this application';
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'document_skill',
+        title: `Recall Memory: ${targetApp}`,
+        description: `Retrieve long-term memory and usage context for ${targetApp}`,
+        riskLevel: 'LOW',
+        params: {
+          action: 'read_document',
+          path: `memory://${targetApp}`,
+        },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: `Recalls stored historical context and user preferences for ${targetApp}`,
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
+    // P7. Phase 5: Web Intelligence & Knowledge Questions (English & Malayalam)
+    else if (
+      lower.startsWith('what is') ||
+      lower.startsWith("what's") ||
+      lower.startsWith('who is') ||
+      lower.startsWith('how to') ||
+      lower.startsWith('why is') ||
+      lower.startsWith('explain ') ||
+      lower.startsWith('tell me about ') ||
+      lower.includes('price of ') ||
+      lower.includes('latest information about') ||
+      lower.includes('news about') ||
+      lower.includes('current price') ||
+      /[\u0D00-\u0D7F]/.test(rawTrimmed)
+    ) {
+      const classification = knowledgeRouter.classify(effectivePrompt);
+      interpretedIntent = classification.interpretedIntent;
+      const query = classification.extractedQuery || effectivePrompt;
+
+      actions.push({
+        id: crypto.randomUUID(),
+        skillId: 'web_search',
+        title: `Web Research: "${query.slice(0, 35)}"`,
+        description: 'Conduct reliable web research, analyze recency, and synthesize answer',
+        riskLevel: 'LOW',
+        params: {
+          query,
+          maxResults: 5,
+          isMalayalam: classification.isLanguageMalayalam,
+        },
+        status: 'PENDING_APPROVAL',
+        expectedEffect: 'Researches live web and provides synthesized voice/text answer',
+        requiresTypedConfirmation: false,
+        dryRunSupported: true,
+      });
+    }
+
     // A1. "skip ad", "skip youtube ad", "auto skip ads"
     else if (
       lower.includes('skip ad') ||
@@ -651,7 +962,14 @@ export class CommandRouter {
     }
 
     else if (lower.startsWith('open ') && !lower.includes('binance') && !lower.includes('youtube')) {
-      const appTarget = effectivePrompt.replace(/^open\s+/i, '').trim();
+      let rawTarget = effectivePrompt.replace(/^open\s+/i, '').trim();
+      rawTarget = rawTarget
+        .replace(/\s+from\s+my\s+computer/i, '')
+        .replace(/\s+on\s+my\s+mac/i, '')
+        .replace(/\s+application$/i, '')
+        .replace(/\s+app$/i, '')
+        .trim();
+      const appTarget = rawTarget.toLowerCase() === 'wps' ? 'WPS Office' : rawTarget;
       const appCheck = await checkApplicationAvailability(appTarget);
 
       interpretedIntent = `Open Application ${appTarget}`;

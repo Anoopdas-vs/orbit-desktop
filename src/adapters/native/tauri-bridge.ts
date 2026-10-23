@@ -165,6 +165,14 @@ export interface FileMetadataResult {
   modified_timestamp?: number;
 }
 
+export interface ScreenCaptureResult {
+  success: boolean;
+  file_path?: string;
+  width: number;
+  height: number;
+  error?: string;
+}
+
 export interface INativeBridgeDriver {
   openApp(appName: string, path?: string): Promise<OpenAppResult>;
   openUrl(url: string, browser?: string): Promise<OpenUrlResult>;
@@ -192,6 +200,7 @@ export interface INativeBridgeDriver {
   readFile?(path: string, maxBytes?: number): Promise<string>;
   createFile?(path: string, content: string, overwrite?: boolean): Promise<boolean>;
   moveToTrash?(path: string): Promise<boolean>;
+  captureScreen?(outputPath?: string): Promise<ScreenCaptureResult>;
 }
 
 export class MockNativeDriver implements INativeBridgeDriver {
@@ -425,6 +434,15 @@ export class MockNativeDriver implements INativeBridgeDriver {
       throw new Error(`Cannot trash protected path "${path}"`);
     }
     return true;
+  }
+
+  public async captureScreen(outputPath?: string): Promise<ScreenCaptureResult> {
+    return {
+      success: true,
+      file_path: outputPath || '/tmp/janki_mock_screen.png',
+      width: 1920,
+      height: 1080,
+    };
   }
 }
 
@@ -832,6 +850,13 @@ export class NativeBridge {
     }
     const res = await this.execCommand(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
     return res.stdout;
+  }
+
+  public async captureScreen(outputPath?: string): Promise<ScreenCaptureResult> {
+    if (this.customDriver && this.customDriver.captureScreen) return await this.customDriver.captureScreen(outputPath);
+    if (this.isTestEnv()) return await this.defaultMockDriver.captureScreen!(outputPath);
+    if (this.isNative()) return await invoke<ScreenCaptureResult>('cmd_capture_screen', { outputPath });
+    return await this.defaultMockDriver.captureScreen!(outputPath);
   }
 }
 

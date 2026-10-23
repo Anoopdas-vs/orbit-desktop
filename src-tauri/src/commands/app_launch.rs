@@ -16,6 +16,17 @@ const ALLOWED_APPS: &[&str] = &[
     "Calculator",
     "TextEdit",
     "System Settings",
+    "WPS Office",
+    "WPS",
+    "Preview",
+    "Pages",
+    "Numbers",
+    "Keynote",
+    "Adobe Acrobat",
+    "Acrobat Reader",
+    "Notes",
+    "Mail",
+    "Calendar",
 ];
 
 #[derive(Debug, Serialize, Deserialize)]

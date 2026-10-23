@@ -259,6 +259,25 @@ class JankiDatabase {
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS personal_memory (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        is_sensitive INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS recurring_workflows (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        trigger_pattern TEXT NOT NULL,
+        workflow_definition TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
     this.persist();
   }
@@ -481,6 +500,129 @@ class JankiDatabase {
       trades: query('SELECT * FROM trade_journal ORDER BY timestamp DESC LIMIT 200'),
       killSwitches: query('SELECT * FROM kill_switch_events ORDER BY timestamp DESC LIMIT 200'),
     };
+  }
+
+  // --- User Preferences & Personal Memory ---
+
+  public setUserPreference(key: string, value: string): void {
+    if (!this.db) return;
+    this.db.run(
+      `INSERT OR REPLACE INTO user_preferences (key, value, updated_at) VALUES (?, ?, ?)`,
+      [key, value, new Date().toISOString()]
+    );
+    this.persist();
+  }
+
+  public getUserPreference(key: string): string | null {
+    if (!this.db) return null;
+    const res = this.db.exec(`SELECT value FROM user_preferences WHERE key = ?`, [key]);
+    if (res.length === 0 || res[0].values.length === 0) return null;
+    return res[0].values[0][0] as string;
+  }
+
+  public getAllUserPreferences(): Record<string, string> {
+    if (!this.db) return {};
+    const res = this.db.exec(`SELECT key, value FROM user_preferences`);
+    if (res.length === 0) return {};
+    const prefs: Record<string, string> = {};
+    for (const row of res[0].values) {
+      prefs[row[0] as string] = row[1] as string;
+    }
+    return prefs;
+  }
+
+  public savePersonalMemory(memory: {
+    id: string;
+    category: string;
+    key: string;
+    value: string;
+    isSensitive?: boolean;
+  }): void {
+    if (!this.db) return;
+    const now = new Date().toISOString();
+    this.db.run(
+      `INSERT OR REPLACE INTO personal_memory (id, category, key, value, is_sensitive, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        memory.id,
+        memory.category,
+        memory.key,
+        memory.value,
+        memory.isSensitive ? 1 : 0,
+        now,
+        now,
+      ]
+    );
+    this.persist();
+  }
+
+  public getPersonalMemories(category?: string): Array<{
+    id: string;
+    category: string;
+    key: string;
+    value: string;
+    isSensitive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    if (!this.db) return [];
+    const sql = category
+      ? `SELECT id, category, key, value, is_sensitive, created_at, updated_at FROM personal_memory WHERE category = ? ORDER BY updated_at DESC`
+      : `SELECT id, category, key, value, is_sensitive, created_at, updated_at FROM personal_memory ORDER BY updated_at DESC`;
+    const res = category ? this.db.exec(sql, [category]) : this.db.exec(sql);
+    if (res.length === 0) return [];
+    return res[0].values.map((row) => ({
+      id: row[0] as string,
+      category: row[1] as string,
+      key: row[2] as string,
+      value: row[3] as string,
+      isSensitive: (row[4] as number) === 1,
+      createdAt: row[5] as string,
+      updatedAt: row[6] as string,
+    }));
+  }
+
+  public deletePersonalMemory(id: string): void {
+    if (!this.db) return;
+    this.db.run(`DELETE FROM personal_memory WHERE id = ?`, [id]);
+    this.persist();
+  }
+
+  public saveRecurringWorkflow(wf: {
+    id: string;
+    name: string;
+    triggerPattern: string;
+    workflowDefinition: string;
+  }): void {
+    if (!this.db) return;
+    const now = new Date().toISOString();
+    this.db.run(
+      `INSERT OR REPLACE INTO recurring_workflows (id, name, trigger_pattern, workflow_definition, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [wf.id, wf.name, wf.triggerPattern, wf.workflowDefinition, now, now]
+    );
+    this.persist();
+  }
+
+  public getRecurringWorkflows(): Array<{
+    id: string;
+    name: string;
+    triggerPattern: string;
+    workflowDefinition: string;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    if (!this.db) return [];
+    const res = this.db.exec(`SELECT id, name, trigger_pattern, workflow_definition, created_at, updated_at FROM recurring_workflows ORDER BY updated_at DESC`);
+    if (res.length === 0) return [];
+    return res[0].values.map((row) => ({
+      id: row[0] as string,
+      name: row[1] as string,
+      triggerPattern: row[2] as string,
+      workflowDefinition: row[3] as string,
+      createdAt: row[4] as string,
+      updatedAt: row[5] as string,
+    }));
   }
 
   public resetAllData(): void {

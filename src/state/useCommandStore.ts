@@ -30,6 +30,8 @@ import { replanningEngine } from '../core/replanning-engine';
 import { useComputerStateStore } from './useComputerStateStore';
 import { useSafetyStore } from './useSafetyStore';
 import { useAuditStore } from './useAuditStore';
+import { toolRegistry } from '../tools/tool-registry';
+import { answerGenerator } from '../core/answer-generator';
 
 interface CommandState {
   inputText: string;
@@ -414,15 +416,21 @@ export const useCommandStore = create<CommandState>((set, get) => ({
 
     // 1. Resolve variable bindings from previous step outputs and context
     const stepOutputs: Record<string, any> = {};
-    for (const a of currentPlan.actions) {
+    currentPlan.actions.forEach((a, idx) => {
       if (a.output !== undefined) {
-        stepOutputs[a.id] = {
+        const stepData = {
           output: a.output,
           data: a.output?.data ?? a.output,
+          summary:
+            a.output?.summary ||
+            a.output?.synthesis?.spokenSummary ||
+            (typeof a.output === 'string' ? a.output : undefined),
           ...(typeof a.output === 'object' && a.output !== null ? a.output : {}),
         };
+        stepOutputs[a.id] = stepData;
+        stepOutputs[`step_${idx + 1}`] = stepData;
       }
-    }
+    });
     const resolution = variableResolver.resolveStepParams(action.params || {}, {
       steps: stepOutputs,
       context: {
@@ -467,6 +475,54 @@ export const useCommandStore = create<CommandState>((set, get) => ({
         } else {
           result = await skillRegistry.dispatch('computer_control', resolvedParams, executionContext);
         }
+      } else if (action.skillId === 'web_search') {
+        const searchRes = await toolRegistry.dispatch('web_search', resolvedParams, executionContext);
+        if (searchRes.success && searchRes.data && searchRes.data.results) {
+          const targetLang = resolvedParams.isMalayalam ? 'ml' : undefined;
+          const synthesis = await answerGenerator.generate(
+            resolvedParams.query,
+            searchRes.data.results,
+            targetLang
+          );
+          result = {
+            success: true,
+            data: {
+              ...searchRes.data,
+              synthesis,
+              summary: synthesis.spokenSummary,
+            },
+            stdout: synthesis.detailedMarkdown,
+            message: synthesis.spokenSummary,
+            durationMs: searchRes.durationMs + synthesis.durationMs,
+          };
+        } else {
+          result = {
+            success: searchRes.success,
+            data: searchRes.data,
+            error: searchRes.error,
+            stdout: searchRes.error,
+            message: searchRes.error || 'Web research could not retrieve information.',
+            durationMs: searchRes.durationMs,
+          };
+        }
+      } else if (action.skillId === 'browser_research') {
+        const researchRes = await toolRegistry.dispatch('browser_research', resolvedParams, executionContext);
+        result = researchRes;
+      } else if (action.skillId === 'email_workflow') {
+        const emailRes = await toolRegistry.dispatch('email_workflow', resolvedParams, {
+          ...executionContext,
+          confirmedByUser: true,
+        });
+        result = emailRes;
+      } else if (action.skillId === 'calendar_workflow') {
+        const calRes = await toolRegistry.dispatch('calendar_workflow', resolvedParams, executionContext);
+        result = calRes;
+      } else if (action.skillId === 'file_workflow') {
+        const fileRes = await toolRegistry.dispatch('file_workflow', resolvedParams, {
+          ...executionContext,
+          confirmedByUser: true,
+        });
+        result = fileRes;
       } else if (skillRegistry.hasSkill(action.skillId)) {
         // Dispatches through unified SkillRegistry (browser_skill, files_skill, document_skill, office_skill, system_skill, media_skill, etc.)
         result = await skillRegistry.dispatch(action.skillId, resolvedParams, executionContext);
@@ -671,7 +727,7 @@ export const useCommandStore = create<CommandState>((set, get) => ({
       }));
 
       if (ttsEnabled && result.success && !result.data?.needsFallbackConfirmation) {
-        speechSynth.speak(responseText);
+        speechSynth.speak(responseText, result.data?.synthesis?.language);
       }
     } catch (err: any) {
       console.error('Execution error:', err);

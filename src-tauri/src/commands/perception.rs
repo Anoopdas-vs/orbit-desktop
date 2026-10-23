@@ -209,6 +209,46 @@ pub fn cmd_get_ui_tree(target_app: Option<String>) -> PerceptionResult {
     inspect_ui_tree(target_app.as_deref())
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScreenCaptureResult {
+    pub success: bool,
+    pub file_path: Option<String>,
+    pub width: i32,
+    pub height: i32,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub fn cmd_capture_screen(output_path: Option<String>) -> ScreenCaptureResult {
+    let target_path = output_path.unwrap_or_else(|| {
+        format!("/tmp/janki_screen_{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis())
+    });
+
+    match Command::new("/usr/sbin/screencapture").args(["-x", &target_path]).output() {
+        Ok(out) if out.status.success() => ScreenCaptureResult {
+            success: true,
+            file_path: Some(target_path),
+            width: 1920,
+            height: 1080,
+            error: None,
+        },
+        Ok(out) => ScreenCaptureResult {
+            success: false,
+            file_path: None,
+            width: 0,
+            height: 0,
+            error: Some(String::from_utf8_lossy(&out.stderr).to_string()),
+        },
+        Err(e) => ScreenCaptureResult {
+            success: false,
+            file_path: None,
+            width: 0,
+            height: 0,
+            error: Some(format!("screencapture invocation failed: {}", e)),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
